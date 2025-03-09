@@ -104,6 +104,7 @@ void MainWindow::onSearchEditChanged(const QString &text)
 
 void MainWindow::onPathEditChanged(const QString &text)
 {
+    resultList->clear();
     searchEdit->clear();
     searchEdit->setEnabled(!text.isEmpty());
     

@@ -46,6 +46,8 @@ void SearchManager::setSearcher(SearcherInterface *searcher)
 
 void SearchManager::processUserInput(const QString &searchPath, const QString &searchText)
 {
+    qDebug() << "===> input: " << searchText;
+
     // 更新路径
     if (m_currentSearchPath != searchPath) {
         qDebug() << "===> path changed: " << searchPath;
@@ -63,45 +65,15 @@ void SearchManager::processUserInput(const QString &searchPath, const QString &s
         return;
     }
 
-    // 检查输入连续性
-    if (!m_lastSearchText.isEmpty()) {
-        InputChangeType changeType = analyzeInputChange(m_lastSearchText, searchText);
-
-        switch (changeType) {
-        case InputChangeType::Addition:
-            // 如果新输入是旧输入的扩展，并且我们有旧缓存
-            if (searchText.startsWith(m_lastSearchText) && m_resultsCache.contains(m_lastSearchText)) {
-                qDebug() << "===> search from cache(add): searchText";
-                QStringList filteredResults = filterLocalResults(m_resultsCache[m_lastSearchText], searchText);
-                m_resultsCache[searchText] = filteredResults;
-                emit searchResultsReady(filteredResults);
-                m_lastSearchText = searchText;
-                return;
-            }
-            break;
-
-        case InputChangeType::Deletion:
-            // 如果通过删除得到，并且我们缓存中有更长的查询
-            for (auto it = m_resultsCache.begin(); it != m_resultsCache.end(); ++it) {
-                if (it.key().startsWith(searchText) && it.key().length() > searchText.length()) {
-                    qDebug() << "===> search from cache(del): searchText";
-                    QStringList filteredResults = filterLocalResults(it.value(), searchText);
-                    m_resultsCache[searchText] = filteredResults;
-                    emit searchResultsReady(filteredResults);
-                    m_lastSearchText = searchText;
-                    return;
-                }
-            }
-            break;
-
-        default:
-            // 其他情况需要调用后端
-            break;
-        }
+    // 尝试从缓存获取结果
+    QStringList cachedResults;
+    if (!m_lastSearchText.isEmpty() && tryGetFromCache(searchText, cachedResults)) {
+        emit searchResultsReady(cachedResults);
+        m_lastSearchText = searchText;
+        return;
     }
 
     // 应用防抖：重置定时器
-    qDebug() << "===> input :  " << searchText;
     m_debounceTimer.start(determineDebounceDelay(searchText));
 
     // 应用节流：检查上次搜索时间
@@ -130,7 +102,7 @@ void SearchManager::executeSearch()
         return;
     }
 
-    qDebug() << "About to search: " << m_pendingSearchText;
+    qDebug() << "[excute] About to search: " << m_pendingSearchText;
     
     // 检查搜索器是否存在
     if (!m_searcher) {
@@ -234,4 +206,65 @@ void SearchManager::clearCache()
 {
     m_resultsCache.clear();
     m_lastSearchText.clear();
+}
+
+bool SearchManager::tryGetFromCache(const QString &searchText, QStringList &results)
+{
+    // 首先检查是否直接有缓存
+    if (m_resultsCache.contains(searchText)) {
+        qDebug() << "===> search from direct cache: " << searchText;
+        results = m_resultsCache[searchText];
+        return true;
+    }
+
+    // 检查输入变化类型
+    InputChangeType changeType = analyzeInputChange(m_lastSearchText, searchText);
+    
+    // 根据变化类型处理
+    switch (changeType) {
+    case InputChangeType::Addition:
+        return handleIncrementalSearch(searchText, results);
+    case InputChangeType::Deletion:
+        return handleDeletionSearch(searchText, results);
+    default:
+        qDebug() << "==> cache break: replacement or unknown change";
+        return false;
+    }
+}
+
+bool SearchManager::handleIncrementalSearch(const QString &searchText, QStringList &results)
+{
+    // 如果新输入是旧输入的扩展，并且我们有旧缓存
+    if (searchText.startsWith(m_lastSearchText) && m_resultsCache.contains(m_lastSearchText)) {
+        qDebug() << "===> search from cache(add): " << searchText;
+        results = filterLocalResults(m_resultsCache[m_lastSearchText], searchText);
+        m_resultsCache[searchText] = results;
+        return true;
+    }
+    return false;
+}
+
+bool SearchManager::handleDeletionSearch(const QString &searchText, QStringList &results)
+{
+    // 查找最佳前缀匹配
+    QString bestPrefix;
+    
+    for (auto it = m_resultsCache.begin(); it != m_resultsCache.end(); ++it) {
+        // 找到所有是当前查询前缀的缓存项
+        if (searchText.startsWith(it.key())) {
+            // 选择最长的前缀（最接近当前查询的）
+            if (bestPrefix.isEmpty() || it.key().length() > bestPrefix.length()) {
+                bestPrefix = it.key();
+            }
+        }
+    }
+    
+    if (!bestPrefix.isEmpty()) {
+        qDebug() << "===> search from prefix cache(del): " << bestPrefix << " for " << searchText;
+        results = filterLocalResults(m_resultsCache[bestPrefix], searchText);
+        m_resultsCache[searchText] = results;
+        return true;
+    }
+    
+    return false;
 }

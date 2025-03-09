@@ -68,6 +68,15 @@ private:
     
     // 当前搜索工作目录
     QString m_currentSearchPath;
+
+    // 从缓存中查找结果
+    bool tryGetFromCache(const QString &searchText, QStringList &results);
+    
+    // 处理增量搜索（当输入是添加字符时）
+    bool handleIncrementalSearch(const QString &searchText, QStringList &results);
+    
+    // 处理删除操作搜索
+    bool handleDeletionSearch(const QString &searchText, QStringList &results);
 };
 
 #endif // SEARCHMANAGER_H 
