@@ -30,6 +30,9 @@ private slots:
     void onSearchResultsReady(const QStringList &results);
     void onSearchError(const QString &errorMessage);
     void onResultsProcessed(const QStringList &sortedResults);
+    void showContextMenu(const QPoint &pos);
+    void openContainingFolder();
+    void openSelectedFile();
 
 private:
     void setupUI();

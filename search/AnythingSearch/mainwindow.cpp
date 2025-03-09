@@ -8,6 +8,10 @@
 #include <QApplication>
 #include <QDebug>
 #include <QStatusBar>
+#include <QDesktopServices>
+#include <QMenu>
+#include <QAction>
+#include <QUrl>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -39,6 +43,9 @@ void MainWindow::setupUI()
 
     // 结果列表
     resultList = new QListWidget(this);
+    resultList->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(resultList, &QListWidget::customContextMenuRequested, 
+            this, &MainWindow::showContextMenu);
 
     mainLayout->addLayout(pathLayout);
     mainLayout->addWidget(searchEdit);
@@ -165,4 +172,66 @@ void MainWindow::setSearcher(SearcherInterface *searcher)
     if (searchManager) {
         searchManager->setSearcher(searcher);
     }
+}
+
+void MainWindow::showContextMenu(const QPoint &pos)
+{
+    QListWidgetItem *item = resultList->itemAt(pos);
+    if (!item) {
+        return;
+    }
+    
+    QMenu contextMenu(this);
+    
+    QAction *openFolderAction = new QAction("打开所在文件夹", this);
+    connect(openFolderAction, &QAction::triggered, this, &MainWindow::openContainingFolder);
+    contextMenu.addAction(openFolderAction);
+    
+    QAction *openFileAction = new QAction("打开文件", this);
+    connect(openFileAction, &QAction::triggered, this, &MainWindow::openSelectedFile);
+    contextMenu.addAction(openFileAction);
+    
+    contextMenu.exec(resultList->mapToGlobal(pos));
+}
+
+void MainWindow::openContainingFolder()
+{
+    QListWidgetItem *item = resultList->currentItem();
+    if (!item) {
+        return;
+    }
+    
+    QString filePath = item->text();
+    QFileInfo fileInfo(filePath);
+    
+    if (!fileInfo.exists()) {
+        QMessageBox::warning(this, "错误", "文件不存在");
+        return;
+    }
+    
+    QString folderPath = fileInfo.absolutePath();
+    
+    // 使用QDesktopServices打开文件夹
+    QUrl folderUrl = QUrl::fromLocalFile(folderPath);
+    QDesktopServices::openUrl(folderUrl);
+}
+
+void MainWindow::openSelectedFile()
+{
+    QListWidgetItem *item = resultList->currentItem();
+    if (!item) {
+        return;
+    }
+    
+    QString filePath = item->text();
+    QFileInfo fileInfo(filePath);
+    
+    if (!fileInfo.exists()) {
+        QMessageBox::warning(this, "错误", "文件不存在");
+        return;
+    }
+    
+    // 使用QDesktopServices打开文件
+    QUrl fileUrl = QUrl::fromLocalFile(filePath);
+    QDesktopServices::openUrl(fileUrl);
 }
