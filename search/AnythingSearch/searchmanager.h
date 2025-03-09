@@ -1,7 +1,7 @@
 #ifndef SEARCHMANAGER_H
 #define SEARCHMANAGER_H
 
-#include "anythingsearcher.h"
+#include "searcherinterface.h"
 
 #include <QObject>
 #include <QTimer>
@@ -15,6 +15,10 @@ class SearchManager : public QObject
     Q_OBJECT
 public:
     explicit SearchManager(QObject *parent = nullptr);
+    explicit SearchManager(SearcherInterface *searcher, QObject *parent = nullptr);
+    
+    // 设置搜索器
+    void setSearcher(SearcherInterface *searcher);
     
     // 处理用户输入
     void processUserInput(const QString &searchPath, const QString &searchText);
@@ -48,7 +52,10 @@ private:
     // 判断是否需要延迟搜索
     bool shouldDelaySearch(const QString &text);
 
-    AnythingSearcher *m_searcher;
+    QString getFileName(const QString &filePath);
+
+    SearcherInterface *m_searcher;
+    bool m_ownsSearcher;
     QTimer m_debounceTimer;
     QString m_pendingSearchPath;
     QString m_pendingSearchText;
@@ -61,9 +68,6 @@ private:
     
     // 当前搜索工作目录
     QString m_currentSearchPath;
-
-    // 添加文件名缓存
-    QHash<QString, QString> m_fileNameCache;  // 路径 -> 文件名的映射
 };
 
 #endif // SEARCHMANAGER_H 

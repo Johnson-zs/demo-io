@@ -26,7 +26,7 @@ QStringList batchExtract(const QStringList &paths)
 }   // namespace
 
 AnythingSearcher::AnythingSearcher(QObject *parent)
-    : QObject { parent }, currentRequest(nullptr)
+    : SearcherInterface { parent }, currentRequest(nullptr)
 {
     anythingInterface = new QDBusInterface("com.deepin.anything",
                                            "/com/deepin/anything",

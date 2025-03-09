@@ -6,7 +6,7 @@
 #include <QDebug>
 
 SearchManager::SearchManager(QObject *parent)
-    : QObject(parent), m_searcher(new AnythingSearcher(this))
+    : QObject(parent), m_searcher(nullptr), m_ownsSearcher(false)
 {
     // 初始化防抖定时器
     m_debounceTimer.setSingleShot(true);
@@ -15,14 +15,33 @@ SearchManager::SearchManager(QObject *parent)
         executeSearch();
     });
 
-    // 连接搜索信号
-    connect(m_searcher, &AnythingSearcher::searchFinished,
-            this, &SearchManager::onSearchFinished);
-    connect(m_searcher, &AnythingSearcher::searchFailed,
-            this, &SearchManager::onSearchFailed);
-
     // 初始化时间戳
     m_lastSearchTime = QDateTime::currentDateTime();
+}
+
+SearchManager::SearchManager(SearcherInterface *searcher, QObject *parent)
+    : SearchManager(parent)
+{
+    setSearcher(searcher);
+}
+
+void SearchManager::setSearcher(SearcherInterface *searcher)
+{
+    // 清理旧的搜索器
+    if (m_searcher && m_ownsSearcher) {
+        delete m_searcher;
+    }
+    
+    m_searcher = searcher;
+    m_ownsSearcher = false;
+    
+    if (m_searcher) {
+        // 连接搜索信号
+        connect(m_searcher, &SearcherInterface::searchFinished,
+                this, &SearchManager::onSearchFinished);
+        connect(m_searcher, &SearcherInterface::searchFailed,
+                this, &SearchManager::onSearchFailed);
+    }
 }
 
 void SearchManager::processUserInput(const QString &searchPath, const QString &searchText)
@@ -52,6 +71,7 @@ void SearchManager::processUserInput(const QString &searchPath, const QString &s
         case InputChangeType::Addition:
             // 如果新输入是旧输入的扩展，并且我们有旧缓存
             if (searchText.startsWith(m_lastSearchText) && m_resultsCache.contains(m_lastSearchText)) {
+                qDebug() << "===> search from cache(add): searchText";
                 QStringList filteredResults = filterLocalResults(m_resultsCache[m_lastSearchText], searchText);
                 m_resultsCache[searchText] = filteredResults;
                 emit searchResultsReady(filteredResults);
@@ -64,6 +84,7 @@ void SearchManager::processUserInput(const QString &searchPath, const QString &s
             // 如果通过删除得到，并且我们缓存中有更长的查询
             for (auto it = m_resultsCache.begin(); it != m_resultsCache.end(); ++it) {
                 if (it.key().startsWith(searchText) && it.key().length() > searchText.length()) {
+                    qDebug() << "===> search from cache(del): searchText";
                     QStringList filteredResults = filterLocalResults(it.value(), searchText);
                     m_resultsCache[searchText] = filteredResults;
                     emit searchResultsReady(filteredResults);
@@ -110,6 +131,13 @@ void SearchManager::executeSearch()
     }
 
     qDebug() << "About to search: " << m_pendingSearchText;
+    
+    // 检查搜索器是否存在
+    if (!m_searcher) {
+        emit searchError("搜索器未初始化");
+        return;
+    }
+    
     // 执行实际搜索
     if (!m_searcher->requestSearch(m_pendingSearchPath, m_pendingSearchText)) {
         emit searchError("搜索请求失败");
@@ -151,18 +179,30 @@ SearchManager::InputChangeType SearchManager::analyzeInputChange(const QString &
     return InputChangeType::Replacement;
 }
 
+QString SearchManager::getFileName(const QString &filePath)
+{
+    
+    // 缓存未命中，计算文件名
+    int lastSeparator = filePath.lastIndexOf('/');
+    QString fileName = (lastSeparator == -1) ? 
+        filePath : filePath.mid(lastSeparator + 1);
+
+    return fileName;
+}
+
 QStringList SearchManager::filterLocalResults(const QStringList &sourceResults, const QString &query)
 {
     QStringList filteredResults;
-
-    // 简单的本地过滤
+    filteredResults.reserve(sourceResults.size());
+    
+    const QString queryLower = query.toLower();
+    
     for (const QString &filePath : sourceResults) {
-        QString fileName = QFileInfo(filePath).fileName();
-        if (fileName.contains(query, Qt::CaseInsensitive)) {
+        if (getFileName(filePath).toLower().contains(queryLower)) {
             filteredResults.append(filePath);
         }
     }
-
+    
     return filteredResults;
 }
 

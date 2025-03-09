@@ -3,6 +3,7 @@
 
 #include "searchmanager.h"
 #include "resultprocessor.h"
+#include "searcherinterface.h"
 
 #include <QMainWindow>
 #include <QStringList>
@@ -18,6 +19,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    
+    // 设置搜索器
+    void setSearcher(SearcherInterface *searcher);
 
 private slots:
     void selectDirectory();

@@ -17,7 +17,8 @@ void ResultProcessor::processResults(const QStringList &results, const QString &
         emit processingFinished(QStringList());
         return;
     }
-    
+
+#if 0
     // 创建结果副本
     QStringList sortedResults = results;
     
@@ -37,6 +38,9 @@ void ResultProcessor::processResults(const QStringList &results, const QString &
     });
     
     emit processingFinished(sortedResults);
+#else
+    emit processingFinished(results);
+#endif
 }
 
 void ResultProcessor::setPreferredExtensions(const QStringList &extensions)

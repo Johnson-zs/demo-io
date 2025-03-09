@@ -87,6 +87,7 @@ void MainWindow::onSearchEditChanged(const QString &text)
 {
     if (text.isEmpty()) {
         resultList->clear();
+        searchManager->clearCache();
         updateStatusLabel("请输入搜索内容");
         return;
     }
@@ -156,4 +157,11 @@ void MainWindow::displayResults(const QStringList &results)
     }
     
     QApplication::restoreOverrideCursor();
+}
+
+void MainWindow::setSearcher(SearcherInterface *searcher)
+{
+    if (searchManager) {
+        searchManager->setSearcher(searcher);
+    }
 }
