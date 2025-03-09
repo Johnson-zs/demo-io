@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QDBusInterface>
+#include <QStringList>
 
 class AnythingSearcher : public QObject
 {
@@ -10,12 +11,21 @@ class AnythingSearcher : public QObject
 public:
     explicit AnythingSearcher(QObject *parent = nullptr);
 
-    bool requestSedarch(const QString &path, const QString &text);
+    bool requestSearch(const QString &path, const QString &text);
+    
+    void cancelSearch();
 
 signals:
+    void searchFinished(const QString &query, const QStringList &results);
+    void searchFailed(const QString &query, const QString &errorMessage);
 
 private:
     QDBusInterface *anythingInterface { nullptr };
+    QDBusPendingCallWatcher *currentRequest { nullptr };
+    QString m_currentQuery;
+    
+private slots:
+    void onRequestFinished(QDBusPendingCallWatcher *watcher);
 };
 
 #endif   // ANYTHINGSEARCHER_H

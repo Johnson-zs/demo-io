@@ -2,6 +2,7 @@
 
 #include <QDBusInterface>
 #include <QDBusReply>
+#include <QDBusPendingCallWatcher>
 #include <QDebug>
 
 namespace {
@@ -25,7 +26,7 @@ QStringList batchExtract(const QStringList &paths)
 }   // namespace
 
 AnythingSearcher::AnythingSearcher(QObject *parent)
-    : QObject { parent }
+    : QObject { parent }, currentRequest(nullptr)
 {
     anythingInterface = new QDBusInterface("com.deepin.anything",
                                            "/com/deepin/anything",
@@ -35,23 +36,52 @@ AnythingSearcher::AnythingSearcher(QObject *parent)
     anythingInterface->setTimeout(1000);
 }
 
-bool AnythingSearcher::requestSedarch(const QString &path, const QString &text)
+bool AnythingSearcher::requestSearch(const QString &path, const QString &text)
 {
     if (!anythingInterface->isValid())
         return false;
     if (path.isEmpty() || text.isEmpty())
         return false;
 
-    const QDBusPendingReply<QStringList> reply = anythingInterface->asyncCallWithArgumentList("search", { path, text });
-    auto results = reply.value();
+    // 取消先前的请求（如果有）
+    cancelSearch();
 
-    if (reply.error().type() != QDBusError::NoError) {
-        qWarning() << "deepin-anything search failed:"
-                   << QDBusError::errorString(reply.error().type())
-                   << reply.error().message();
-        return false;
-    }
-    results = batchExtract(results);
+    // 保存当前查询
+    m_currentQuery = text;
 
+    // 使用异步调用
+    QDBusPendingCall pendingCall = anythingInterface->asyncCallWithArgumentList("search", { path, text });
+    currentRequest = new QDBusPendingCallWatcher(pendingCall, this);
+    
+    connect(currentRequest, &QDBusPendingCallWatcher::finished,
+            this, &AnythingSearcher::onRequestFinished);
+    
     return true;
+}
+
+void AnythingSearcher::cancelSearch()
+{
+    if (currentRequest) {
+        disconnect(currentRequest, nullptr, this, nullptr);
+        delete currentRequest;
+        currentRequest = nullptr;
+        m_currentQuery.clear();  // 清除当前查询
+    }
+}
+
+void AnythingSearcher::onRequestFinished(QDBusPendingCallWatcher *watcher)
+{
+    QDBusPendingReply<QStringList> reply = *watcher;
+    
+    if (reply.isError()) {
+        emit searchFailed(m_currentQuery,  // 使用保存的查询
+            QString("搜索失败: %1").arg(reply.error().message()));
+    } else {
+        QStringList results = batchExtract(reply.value());
+        emit searchFinished(m_currentQuery, results);  // 使用保存的查询
+    }
+    
+    // 清理
+    watcher->deleteLater();
+    currentRequest = nullptr;
 }

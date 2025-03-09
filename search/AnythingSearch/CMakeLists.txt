@@ -9,13 +9,15 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets DBus)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets DBus Concurrent)
 
+FILE(GLOB SRC_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+)
 
 set(PROJECT_SOURCES
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
+        ${SRC_FILES}
 )
 
 qt_add_executable(AnythingSearch
@@ -29,6 +31,7 @@ target_link_libraries(AnythingSearch PRIVATE
     Qt6::Core
     Qt6::Widgets
     Qt6::DBus
+    Qt6::Concurrent
 )
 
 
