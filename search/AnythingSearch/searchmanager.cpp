@@ -31,10 +31,10 @@ void SearchManager::setSearcher(SearcherInterface *searcher)
     if (m_searcher && m_ownsSearcher) {
         delete m_searcher;
     }
-    
+
     m_searcher = searcher;
     m_ownsSearcher = false;
-    
+
     if (m_searcher) {
         // 连接搜索信号
         connect(m_searcher, &SearcherInterface::searchFinished,
@@ -103,13 +103,13 @@ void SearchManager::executeSearch()
     }
 
     qDebug() << "[excute] About to search: " << m_pendingSearchText;
-    
+
     // 检查搜索器是否存在
     if (!m_searcher) {
         emit searchError("搜索器未初始化");
         return;
     }
-    
+
     // 执行实际搜索
     if (!m_searcher->requestSearch(m_pendingSearchPath, m_pendingSearchText)) {
         emit searchError("搜索请求失败");
@@ -124,7 +124,7 @@ void SearchManager::onSearchFinished(const QString &query, const QStringList &re
 {
     // 仅处理最新的查询结果
     if (query == m_pendingSearchText) {
-        m_resultsCache[query] = results;
+        addToCache(query, results);
         emit searchResultsReady(results);
     }
 }
@@ -153,10 +153,10 @@ SearchManager::InputChangeType SearchManager::analyzeInputChange(const QString &
 
 QString SearchManager::getFileName(const QString &filePath)
 {
-    
+
     // 缓存未命中，计算文件名
     int lastSeparator = filePath.lastIndexOf('/');
-    QString fileName = (lastSeparator == -1) ? 
+    QString fileName = (lastSeparator == -1) ?
         filePath : filePath.mid(lastSeparator + 1);
 
     return fileName;
@@ -166,15 +166,15 @@ QStringList SearchManager::filterLocalResults(const QStringList &sourceResults, 
 {
     QStringList filteredResults;
     filteredResults.reserve(sourceResults.size());
-    
+
     const QString queryLower = query.toLower();
-    
+
     for (const QString &filePath : sourceResults) {
         if (getFileName(filePath).toLower().contains(queryLower)) {
             filteredResults.append(filePath);
         }
     }
-    
+
     return filteredResults;
 }
 
@@ -205,6 +205,7 @@ bool SearchManager::shouldDelaySearch(const QString &text)
 void SearchManager::clearCache()
 {
     m_resultsCache.clear();
+    m_cacheUsageOrder.clear();
     m_lastSearchText.clear();
 }
 
@@ -214,12 +215,13 @@ bool SearchManager::tryGetFromCache(const QString &searchText, QStringList &resu
     if (m_resultsCache.contains(searchText)) {
         qDebug() << "===> search from direct cache: " << searchText;
         results = m_resultsCache[searchText];
+        updateCacheUsage(searchText); // 更新使用情况
         return true;
     }
 
     // 检查输入变化类型
     InputChangeType changeType = analyzeInputChange(m_lastSearchText, searchText);
-    
+
     // 根据变化类型处理
     switch (changeType) {
     case InputChangeType::Addition:
@@ -238,7 +240,8 @@ bool SearchManager::handleIncrementalSearch(const QString &searchText, QStringLi
     if (searchText.startsWith(m_lastSearchText) && m_resultsCache.contains(m_lastSearchText)) {
         qDebug() << "===> search from cache(add): " << searchText;
         results = filterLocalResults(m_resultsCache[m_lastSearchText], searchText);
-        m_resultsCache[searchText] = results;
+        addToCache(searchText, results);
+        updateCacheUsage(m_lastSearchText); // 更新基础缓存的使用情况
         return true;
     }
     return false;
@@ -248,7 +251,7 @@ bool SearchManager::handleDeletionSearch(const QString &searchText, QStringList 
 {
     // 查找最佳前缀匹配
     QString bestPrefix;
-    
+
     for (auto it = m_resultsCache.begin(); it != m_resultsCache.end(); ++it) {
         // 找到所有是当前查询前缀的缓存项
         if (searchText.startsWith(it.key())) {
@@ -258,13 +261,50 @@ bool SearchManager::handleDeletionSearch(const QString &searchText, QStringList 
             }
         }
     }
-    
+
     if (!bestPrefix.isEmpty()) {
         qDebug() << "===> search from prefix cache(del): " << bestPrefix << " for " << searchText;
         results = filterLocalResults(m_resultsCache[bestPrefix], searchText);
-        m_resultsCache[searchText] = results;
+        addToCache(searchText, results);
+        updateCacheUsage(bestPrefix); // 更新基础缓存的使用情况
         return true;
     }
-    
+
     return false;
+}
+
+void SearchManager::setCacheSize(int size)
+{
+    if (size > 0) {
+        m_maxCacheSize = size;
+
+        // 如果当前缓存超过新的大小限制，清理多余的缓存
+        while (m_resultsCache.size() > m_maxCacheSize) {
+            // 移除最久未使用的缓存项
+            QString oldestKey = m_cacheUsageOrder.takeLast();
+            m_resultsCache.remove(oldestKey);
+        }
+    }
+}
+
+void SearchManager::addToCache(const QString &key, const QStringList &results)
+{
+    // 如果缓存已满，移除最久未使用的项
+    if (m_resultsCache.size() >= m_maxCacheSize && !m_resultsCache.contains(key)) {
+        QString oldestKey = m_cacheUsageOrder.takeLast();
+        m_resultsCache.remove(oldestKey);
+    }
+
+    // 添加新缓存项
+    m_resultsCache[key] = results;
+    updateCacheUsage(key);
+}
+
+void SearchManager::updateCacheUsage(const QString &key)
+{
+    // 从使用顺序列表中移除该键（如果存在）
+    m_cacheUsageOrder.removeAll(key);
+
+    // 将该键添加到列表头部（最近使用）
+    m_cacheUsageOrder.prepend(key);
 }
