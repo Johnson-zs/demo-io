@@ -15,15 +15,11 @@ public:
     bool requestSearch(const QString &path, const QString &text) override;
     void cancelSearch() override;
 
-signals:
-    void searchFinished(const QString &query, const QStringList &results);
-    void searchFailed(const QString &query, const QString &errorMessage);
-
 private:
     QDBusInterface *anythingInterface { nullptr };
     QDBusPendingCallWatcher *currentRequest { nullptr };
     QString m_currentQuery;
-    
+
 private slots:
     void onRequestFinished(QDBusPendingCallWatcher *watcher);
 };
