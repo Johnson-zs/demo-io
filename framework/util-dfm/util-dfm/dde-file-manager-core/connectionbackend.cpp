@@ -9,6 +9,11 @@
 
 namespace DFM {
 
+// 定义信号，解决链接错误
+void ConnectionBackend::disconnected() {}
+void ConnectionBackend::commandReceived(const Task &) {}
+void ConnectionBackend::newConnection() {}
+
 ConnectionBackend::ConnectionBackend(QObject *parent)
     : QObject(parent)
     , state(Idle)
@@ -53,11 +58,14 @@ bool ConnectionBackend::connectToRemote(const QUrl &url)
     address = url;
     
     // 创建套接字
-    socket = new QLocalSocket(this);
+    socket = new QLocalSocket();
+    socket->setParent(this);
     
     // 连接信号
-    connect(socket, &QLocalSocket::readyRead, this, &ConnectionBackend::socketReadyRead);
-    connect(socket, &QLocalSocket::disconnected, this, &ConnectionBackend::socketDisconnected);
+    QObject::connect(socket, SIGNAL(readyRead()), 
+                    this, SLOT(socketReadyRead()));
+    QObject::connect(socket, SIGNAL(disconnected()), 
+                    this, SLOT(socketDisconnected()));
     
     // 连接到服务器
     socket->connectToServer(url.path());
@@ -87,7 +95,8 @@ ConnectionBackend::ConnectionResult ConnectionBackend::listenForRemote()
     }
     
     // 创建服务器
-    localServer = new QLocalServer(this);
+    localServer = new QLocalServer();
+    localServer->setParent(this);
     
     // 生成唯一名称
     QString serverName = QUuid::createUuid().toString();
@@ -107,7 +116,8 @@ ConnectionBackend::ConnectionResult ConnectionBackend::listenForRemote()
     }
     
     // 连接信号
-    connect(localServer, &QLocalServer::newConnection, this, &ConnectionBackend::newConnection);
+    QObject::connect(localServer, SIGNAL(newConnection()),
+                    this, SLOT(slotNewConnection()));
     
     // 设置状态
     state = Listening;
@@ -176,22 +186,24 @@ ConnectionBackend *ConnectionBackend::nextPendingConnection()
     }
     
     // 获取下一个连接
-    QLocalSocket *socket = localServer->nextPendingConnection();
-    if (!socket) {
+    QLocalSocket *nextSocket = localServer->nextPendingConnection();
+    if (!nextSocket) {
         return nullptr;
     }
     
     // 创建新的后端
     ConnectionBackend *backend = new ConnectionBackend();
-    backend->socket = socket;
+    backend->socket = nextSocket;
     backend->state = Connected;
     
     // 转移所有权
-    socket->setParent(backend);
+    nextSocket->setParent(backend);
     
-    // 连接信号
-    connect(socket, &QLocalSocket::readyRead, backend, &ConnectionBackend::socketReadyRead);
-    connect(socket, &QLocalSocket::disconnected, backend, &ConnectionBackend::socketDisconnected);
+    // 连接信号，使用旧式语法避免命名空间问题
+    QObject::connect(nextSocket, SIGNAL(readyRead()), 
+                    backend, SLOT(socketReadyRead()));
+    QObject::connect(nextSocket, SIGNAL(disconnected()), 
+                    backend, SLOT(socketDisconnected()));
     
     return backend;
 }
@@ -258,7 +270,7 @@ void ConnectionBackend::socketReadyRead()
     }
 }
 
-void ConnectionBackend::newConnection()
+void ConnectionBackend::slotNewConnection()
 {
     // 发送新连接信号
     Q_EMIT newConnection();

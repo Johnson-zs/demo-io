@@ -1,0 +1,69 @@
+#ifndef DFM_ERRORCODES_H
+#define DFM_ERRORCODES_H
+
+namespace DFM {
+
+// 错误代码定义
+enum ErrorCode {
+    ERR_CANNOT_OPEN_FOR_READING = 1,
+    ERR_CANNOT_OPEN_FOR_WRITING = 2,
+    ERR_CANNOT_LAUNCH_PROCESS = 3,
+    ERR_INTERNAL = 4,
+    ERR_MALFORMED_URL = 5,
+    ERR_UNSUPPORTED_PROTOCOL = 6,
+    ERR_NO_SOURCE_PROTOCOL = 7,
+    ERR_UNSUPPORTED_ACTION = 8,
+    ERR_IS_DIRECTORY = 9,
+    ERR_IS_FILE = 10,
+    ERR_DOES_NOT_EXIST = 11,
+    ERR_FILE_ALREADY_EXIST = 12,
+    ERR_DIR_ALREADY_EXIST = 13,
+    ERR_UNKNOWN_HOST = 14,
+    ERR_ACCESS_DENIED = 15,
+    ERR_WRITE_ACCESS_DENIED = 16,
+    ERR_CANNOT_ENTER_DIRECTORY = 17,
+    ERR_PROTOCOL_IS_NOT_A_FILESYSTEM = 18,
+    ERR_CYCLIC_LINK = 19,
+    ERR_USER_CANCELED = 20,
+    ERR_CYCLIC_COPY = 21,
+    ERR_COULD_NOT_CREATE_SOCKET = 22,
+    ERR_CANNOT_CONNECT = 23,
+    ERR_CONNECTION_BROKEN = 24,
+    ERR_NOT_FILTER_PROTOCOL = 25,
+    ERR_CANNOT_MOUNT = 26,
+    ERR_CANNOT_UNMOUNT = 27,
+    ERR_CANNOT_READ = 28,
+    ERR_CANNOT_WRITE = 29,
+    ERR_CANNOT_BIND = 30,
+    ERR_CANNOT_LISTEN = 31,
+    ERR_CANNOT_ACCEPT = 32,
+    ERR_CANNOT_LOGIN = 33,
+    ERR_CANNOT_STAT = 34,
+    ERR_CANNOT_CLOSEDIR = 35,
+    ERR_CANNOT_MKDIR = 36,
+    ERR_CANNOT_RMDIR = 37,
+    ERR_CANNOT_CHDIR = 38,
+    ERR_CANNOT_CHMOD = 39,
+    ERR_CANNOT_DELETE = 40,
+    ERR_WORKER_DIED = 41,  // Worker进程意外终止
+    ERR_OUT_OF_MEMORY = 42,
+    ERR_UNKNOWN = 99
+};
+
+// 作业标志定义
+enum JobFlag {
+    JOB_DEFAULT = 0,                // 默认标志
+    JOB_OVERWRITE = 1,              // 覆盖已存在的文件
+    JOB_RESUME = 2,                 // 恢复传输
+    JOB_SHOW_PROGRESS = 4,          // 显示进度
+    JOB_RECURSIVE = 8,              // 递归操作
+    JOB_HIDE_PROGRESS_INFO = 16,    // 隐藏进度信息
+    JOB_NO_UI = 32                  // 不显示用户界面
+};
+
+// 组合JobFlag标志
+using JobFlags = int;
+
+} // namespace DFM
+
+#endif // DFM_ERRORCODES_H 

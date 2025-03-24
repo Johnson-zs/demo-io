@@ -6,10 +6,13 @@
 #include <QString>
 #include <QUrl>
 #include <QVariantMap>
+#include <QHostInfo>
 
 namespace DFM {
 
 class Connection;
+class Worker;
+class Job;
 using MetaData = QMap<QString, QString>;
 
 /**
@@ -33,6 +36,42 @@ public:
      * @brief 析构函数
      */
     virtual ~WorkerInterface();
+
+    /**
+     * @brief 设置Job对象
+     * @param job Job对象指针
+     */
+    void setJob(Job *job);
+    
+    /**
+     * @brief 检查是否已连接
+     * @return 如果已连接返回true
+     */
+    bool isConnected() const;
+    
+    /**
+     * @brief 连接Worker
+     * @param protocol 协议名称
+     */
+    void connectWorker(const QString &protocol);
+    
+    /**
+     * @brief 断开Worker连接
+     */
+    void disconnectWorker();
+    
+    /**
+     * @brief 发送命令
+     * @param cmd 命令ID
+     * @param data 命令数据
+     */
+    void send(int cmd, const QByteArray &data);
+    
+    /**
+     * @brief 发送特殊命令
+     * @param data 命令数据
+     */
+    void special(const QByteArray &data);
 
     /**
      * @brief 分发命令
@@ -93,6 +132,11 @@ Q_SIGNALS:
      * @brief 当任务完成时发出的信号
      */
     void finished();
+    
+    /**
+     * @brief 当Worker断开连接时发出的信号
+     */
+    void disconnected();
     
     /**
      * @brief 当接收到文件属性时发出的信号
@@ -235,6 +279,11 @@ protected Q_SLOTS:
      * @brief 计算传输速度
      */
     void calcSpeed();
+    
+    /**
+     * @brief 处理Worker断开连接的槽函数
+     */
+    void slotWorkerDisconnected();
 
 protected:
     Connection *m_connection = nullptr;  ///< 连接对象
@@ -254,6 +303,9 @@ protected:
     QTimer m_speed_timer;
     
     QString m_messageBoxDetails;  ///< 消息框详情
+    
+    Worker *m_worker;  // Worker指针
+    Job *m_job;        // Job指针
 };
 
 } // namespace DFM

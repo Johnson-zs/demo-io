@@ -94,6 +94,12 @@ public:
     void deref();
     
     /**
+     * @brief 检查是否有引用
+     * @return 如果有引用返回true
+     */
+    bool isRefUsed() const;
+    
+    /**
      * @brief 即将删除时的清理工作
      */
     virtual void aboutToDelete();
@@ -139,6 +145,12 @@ public:
      * @return 如果活跃返回true
      */
     bool isAlive() const;
+    
+    /**
+     * @brief 检查Worker是否准备就绪
+     * @return 如果准备就绪返回true
+     */
+    bool isReady() const;
 
     /**
      * @brief 挂起Worker
@@ -206,6 +218,11 @@ Q_SIGNALS:
      * @param errorText 错误文本
      */
     void error(int errorCode, const QString &errorText);
+    
+    /**
+     * @brief 当Worker断开连接时发出的信号
+     */
+    void disconnected();
 
 private Q_SLOTS:
     /**

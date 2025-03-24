@@ -6,17 +6,24 @@
 
 namespace DFM {
 
-Connection::Connection(QObject *parent)
+// 定义信号，解决链接错误
+void Connection::readyRead() {}
+void Connection::disconnected() {}
+void Connection::newConnection() {}
+
+Connection::Connection(Type type, QObject *parent)
     : QObject(parent)
-    , d(new ConnectionPrivate(this))
+    , d(std::make_unique<ConnectionPrivate>())
+    , m_type(type)
 {
+    d->q = this;
     qDebug() << "创建Connection实例";
 }
 
 Connection::~Connection()
 {
     qDebug() << "销毁Connection实例";
-    delete d;
+    // 不需要手动删除 d，std::unique_ptr 会自动管理释放
 }
 
 void Connection::setSuspended(bool enable)
@@ -39,6 +46,11 @@ bool Connection::inited() const
     return d->inited;
 }
 
+bool Connection::suspended() const
+{
+    return d->suspended;
+}
+
 void Connection::suspend()
 {
     setSuspended(true);
@@ -49,14 +61,14 @@ void Connection::resume()
     setSuspended(false);
 }
 
-bool Connection::connectToRemote(const QUrl &url)
+void Connection::connectToRemote(const QUrl &url)
 {
     QMutexLocker locker(&d->mutex);
     
     // 如果已经初始化，则返回
     if (d->inited) {
         qWarning() << "Connection已经初始化";
-        return false;
+        return;
     }
     
     // 创建后端
@@ -74,18 +86,16 @@ bool Connection::connectToRemote(const QUrl &url)
         d->inited = true;
         d->server = false;
     }
-    
-    return result;
 }
 
-bool Connection::listenForRemote()
+void Connection::listenForRemote()
 {
     QMutexLocker locker(&d->mutex);
     
     // 如果已经初始化，则返回
     if (d->inited) {
         qWarning() << "Connection已经初始化";
-        return false;
+        return;
     }
     
     // 创建后端
@@ -101,11 +111,7 @@ bool Connection::listenForRemote()
         
         // 连接信号
         connect(d->backend, &ConnectionBackend::newConnection, this, &Connection::slotNewConnection);
-        
-        return true;
     }
-    
-    return false;
 }
 
 Connection *Connection::nextPendingConnection()
@@ -124,7 +130,7 @@ Connection *Connection::nextPendingConnection()
     }
     
     // 创建新的连接
-    Connection *connection = new Connection();
+    Connection *connection = new Connection(Type::Worker);
     connection->d->backend = backend;
     connection->d->inited = true;
     connection->d->server = false;
@@ -139,7 +145,7 @@ Connection *Connection::nextPendingConnection()
     return connection;
 }
 
-void Connection::disconnect()
+void Connection::close()
 {
     QMutexLocker locker(&d->mutex);
     
@@ -228,7 +234,7 @@ bool Connection::waitForIncomingTask(int ms)
     return d->backend->waitForIncomingTask(ms);
 }
 
-Connection::Task Connection::readCommand()
+Task Connection::readCommand()
 {
     QMutexLocker locker(&d->mutex);
     
@@ -248,36 +254,87 @@ Connection::Task Connection::readCommand()
     return Task();
 }
 
+int Connection::read(int *_cmd, QByteArray &data)
+{
+    // 确保参数有效
+    if (!_cmd) {
+        return -1;
+    }
+    
+    // 检查是否有可用任务
+    if (!hasTaskAvailable()) {
+        return -1;
+    }
+    
+    // 读取任务
+    Task task = readCommand();
+    if (task.cmd == 0 && task.data.isEmpty()) {
+        return -1;
+    }
+    
+    // 设置输出参数
+    *_cmd = task.cmd;
+    data = task.data;
+    
+    return task.data.size();
+}
+
 void Connection::slotGotTask(const Task &task)
 {
-    // 发送信号
-    Q_EMIT commandReceived(task.cmd);
+    qDebug() << "接收到命令:" << task.cmd << "数据大小:" << task.data.size();
+    
+    // 保存任务
+    QMutexLocker locker(&d->mutex);
+    d->incomingTasks.append(task);
+    
+    // 发出信号
+    if (d->readMode == ReadMode::EventDriven) {
+        d->signalEmitted = true;
+        Q_EMIT readyRead();
+    }
 }
 
 void Connection::slotBackendDisconnected()
 {
-    // 发送断开连接信号
+    qDebug() << "连接断开";
+    
+    // 移除所有连接
+    if (d->backend) {
+        disconnect(d->backend, nullptr, this, nullptr);
+    }
+    
+    // 标记为未初始化
+    d->inited = false;
+    
+    // 发出信号
     Q_EMIT disconnected();
 }
 
 void Connection::slotNewConnection()
 {
-    // 发送新连接信号
+    qDebug() << "新的连接";
+    
+    // 发出信号
     Q_EMIT newConnection();
 }
 
-ConnectionPrivate::ConnectionPrivate(Connection *parent)
-    : q(parent)
-    , backend(nullptr)
-    , inited(false)
-    , server(false)
-    , suspended(false)
+bool Connection::sendnow(int cmd, const QByteArray &data)
 {
+    qDebug() << "立即发送命令:" << cmd << "数据大小:" << data.size();
+    
+    // 如果没有初始化，则返回
+    if (!d->inited || !d->backend) {
+        qWarning() << "Connection未初始化";
+        return false;
+    }
+    
+    // 直接发送命令
+    return d->backend->sendCommand(cmd, data);
 }
 
-ConnectionPrivate::~ConnectionPrivate()
+void Connection::setReadMode(ReadMode readMode)
 {
-    delete backend;
+    d->readMode = readMode;
 }
 
 } // namespace DFM 

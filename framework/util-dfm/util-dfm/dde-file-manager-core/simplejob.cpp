@@ -2,261 +2,211 @@
 #include "worker.h"
 #include "scheduler.h"
 #include "commands.h"
+#include "errorcodes.h"
 #include <QDataStream>
 #include <QDebug>
 
 namespace DFM {
 
+// 静态变量：保存被挂起的任务URL
+static QUrl s_workerUrlOnHold;
+
 class SimpleJobPrivate {
 public:
-    SimpleJobPrivate(const QUrl &url)
-        : m_url(url)
-        , m_worker(nullptr)
-        , m_redirectionHandlingEnabled(true)
+    SimpleJobPrivate()
+        : worker(nullptr)
+        , redirectionHandlingEnabled(true)
     {}
 
-    QUrl m_url;
-    Worker *m_worker;
-    bool m_redirectionHandlingEnabled;
+    QUrl url;                        // 任务URL
+    Worker *worker;                  // 关联的Worker
+    bool redirectionHandlingEnabled; // 是否启用重定向处理
 };
 
 SimpleJob::SimpleJob(const QUrl &url, QObject *parent)
     : Job(parent)
-    , d(new SimpleJobPrivate(url))
+    , d(std::make_unique<SimpleJobPrivate>())
 {
-    // 注册任务
-    Scheduler::self()->registerJob(this, url);
+    d->url = url;
+    qDebug() << "创建SimpleJob实例，URL:" << url;
 }
 
 SimpleJob::~SimpleJob()
 {
-    // 确保Worker不再引用此任务
-    if (d->m_worker) {
-        d->m_worker->setJob(nullptr);
-    }
+    qDebug() << "销毁SimpleJob实例";
+}
+
+void SimpleJob::start()
+{
+    qDebug() << "SimpleJob::start()";
+    // 基类中的虚函数实现，子类可以重写
+}
+
+void SimpleJob::cancel()
+{
+    qDebug() << "SimpleJob::cancel()";
+    // 基类中的虚函数实现，子类可以重写
+}
+
+void SimpleJob::suspend()
+{
+    qDebug() << "SimpleJob::suspend()";
+    // 基类中的虚函数实现，子类可以重写
+}
+
+void SimpleJob::resume()
+{
+    qDebug() << "SimpleJob::resume()";
+    // 基类中的虚函数实现，子类可以重写
 }
 
 const QUrl &SimpleJob::url() const
 {
-    return d->m_url;
+    return d->url;
 }
 
 void SimpleJob::setUrl(const QUrl &url)
 {
-    d->m_url = url;
+    d->url = url;
 }
 
 Worker *SimpleJob::worker() const
 {
-    return d->m_worker;
+    return d->worker;
 }
 
 void SimpleJob::setWorker(Worker *worker)
 {
-    d->m_worker = worker;
+    d->worker = worker;
 }
 
 void SimpleJob::putOnHold()
 {
-    if (d->m_worker) {
-        Scheduler::self()->putWorkerOnHold(this, d->m_url);
-    }
+    qDebug() << "SimpleJob::putOnHold()";
+    
+    s_workerUrlOnHold = d->url;
 }
 
 void SimpleJob::removeOnHold()
 {
-    Scheduler::self()->removeWorkerOnHold();
+    qDebug() << "SimpleJob::removeOnHold()";
+    
+    s_workerUrlOnHold = QUrl();
 }
 
 bool SimpleJob::isRedirectionHandlingEnabled() const
 {
-    return d->m_redirectionHandlingEnabled;
+    return d->redirectionHandlingEnabled;
 }
 
 void SimpleJob::setRedirectionHandlingEnabled(bool handle)
 {
-    d->m_redirectionHandlingEnabled = handle;
+    d->redirectionHandlingEnabled = handle;
 }
 
 void SimpleJob::slotError(int error, const QString &errorText)
 {
-    qDebug() << "SimpleJob::slotError:" << error << errorText;
+    qDebug() << "SimpleJob::slotError(): 错误码:" << error << "错误文本:" << errorText;
     
     // 设置错误信息
     setError(error);
     setErrorText(errorText);
     
-    // 结束任务
+    // 发送错误信号
+    Q_EMIT this->error(error, errorText);
+    
+    // 发送结果信号
     emitResult();
 }
 
 void SimpleJob::slotFinished()
 {
-    qDebug() << "SimpleJob::slotFinished";
+    qDebug() << "SimpleJob::slotFinished()";
     
-    // 告知调度器任务已完成
-    if (d->m_worker) {
-        Scheduler::self()->jobFinished(this, d->m_worker);
-    }
-    
-    // 发送任务完成信号
+    // 发送结果信号
     emitResult();
 }
 
 void SimpleJob::slotWarning(const QString &warning)
 {
-    qDebug() << "SimpleJob::slotWarning:" << warning;
+    qDebug() << "SimpleJob::slotWarning(): 警告:" << warning;
     
-    // 发送警告信号
-    Q_EMIT warning(this, warning);
+    // 实际实现可能需要处理警告
 }
 
 void SimpleJob::slotMetaData(const QMap<QString, QString> &metaData)
 {
-    // 处理元数据
-    // 可以在子类中扩展此功能
+    qDebug() << "SimpleJob::slotMetaData(): 元数据大小:" << metaData.size();
+    
+    // 实际实现可能需要处理元数据
 }
 
-// SimpleJob工厂函数
+// CustomSimpleJob 实现
+CustomSimpleJob::CustomSimpleJob(const QUrl &url, QObject *parent)
+    : SimpleJob(url, parent)
+{
+    qDebug() << "创建CustomSimpleJob实例，URL:" << url;
+}
+
+// 任务工厂函数实现
 SimpleJob *file_delete(const QUrl &url, JobFlags flags)
 {
-    SimpleJob *job = new SimpleJob(url);
-    
-    // 设置任务标志
+    // 这些工厂函数应该在 Scheduler 中创建实际的任务
+    // 使用 CustomSimpleJob 代替 SimpleJob
+    CustomSimpleJob *job = new CustomSimpleJob(url);
     job->setFlags(flags);
-    
-    // 发送删除文件命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    stream << CMD_DEL << url << true;
-    
-    job->worker()->send(CMD_DEL, packedArgs);
-    
     return job;
 }
 
 SimpleJob *rmdir(const QUrl &url)
 {
-    SimpleJob *job = new SimpleJob(url);
-    
-    // 发送删除目录命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    stream << CMD_DEL << url << false;
-    
-    job->worker()->send(CMD_DEL, packedArgs);
-    
+    CustomSimpleJob *job = new CustomSimpleJob(url);
     return job;
 }
 
 SimpleJob *chmod(const QUrl &url, int permissions)
 {
-    SimpleJob *job = new SimpleJob(url);
-    
-    // 发送更改权限命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    stream << CMD_CHMOD << url << permissions;
-    
-    job->worker()->send(CMD_CHMOD, packedArgs);
-    
+    CustomSimpleJob *job = new CustomSimpleJob(url);
     return job;
 }
 
 SimpleJob *chown(const QUrl &url, const QString &owner, const QString &group)
 {
-    SimpleJob *job = new SimpleJob(url);
-    
-    // 发送更改所有者命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    stream << CMD_SPECIAL << url << owner << group;
-    
-    job->worker()->send(CMD_SPECIAL, packedArgs);
-    
+    CustomSimpleJob *job = new CustomSimpleJob(url);
     return job;
 }
 
 SimpleJob *setModificationTime(const QUrl &url, const QDateTime &mtime)
 {
-    SimpleJob *job = new SimpleJob(url);
-    
-    // 发送设置修改时间命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    stream << CMD_SPECIAL << url << mtime;
-    
-    job->worker()->send(CMD_SPECIAL, packedArgs);
-    
+    CustomSimpleJob *job = new CustomSimpleJob(url);
     return job;
 }
 
 SimpleJob *rename(const QUrl &src, const QUrl &dest, JobFlags flags)
 {
-    SimpleJob *job = new SimpleJob(src);
-    
-    // 设置任务标志
+    CustomSimpleJob *job = new CustomSimpleJob(src);
     job->setFlags(flags);
-    
-    // 发送重命名命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    stream << CMD_RENAME << src << dest << (int)flags;
-    
-    job->worker()->send(CMD_RENAME, packedArgs);
-    
     return job;
 }
 
 SimpleJob *symlink(const QString &target, const QUrl &dest, JobFlags flags)
 {
-    SimpleJob *job = new SimpleJob(dest);
-    
-    // 设置任务标志
+    CustomSimpleJob *job = new CustomSimpleJob(dest);
     job->setFlags(flags);
-    
-    // 发送创建符号链接命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    stream << CMD_SPECIAL << target << dest << (int)flags;
-    
-    job->worker()->send(CMD_SPECIAL, packedArgs);
-    
     return job;
 }
 
 SimpleJob *special(const QUrl &url, const QByteArray &data, JobFlags flags)
 {
-    SimpleJob *job = new SimpleJob(url);
-    
-    // 设置任务标志
+    CustomSimpleJob *job = new CustomSimpleJob(url);
     job->setFlags(flags);
-    
-    // 发送特殊命令
-    job->worker()->send(CMD_SPECIAL, data);
-    
     return job;
 }
 
 SimpleJob *du(const QUrl &url, bool recursive, JobFlags flags)
 {
-    SimpleJob *job = new SimpleJob(url);
-    
-    // 设置任务标志
+    CustomSimpleJob *job = new CustomSimpleJob(url);
     job->setFlags(flags);
-    
-    // 发送磁盘使用统计命令
-    QByteArray packedArgs;
-    QDataStream stream(&packedArgs, QIODevice::WriteOnly);
-    
-    if (recursive) {
-        stream << CMD_DU_RECURSIVE << url;
-    } else {
-        stream << CMD_DU << url;
-    }
-    
-    job->worker()->send(CMD_SPECIAL, packedArgs);
-    
     return job;
 }
 

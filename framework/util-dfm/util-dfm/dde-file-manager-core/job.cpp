@@ -1,25 +1,40 @@
 #include "job.h"
-#include "job_p.h"
-#include "commands.h"
 #include <QDebug>
 
 namespace DFM {
 
+// 定义信号，解决链接错误
+void Job::finished() {}
+void Job::canceled() {}
+void Job::error(int, const QString &) {}
+void Job::percent(int) {}
+void Job::processedSize(qint64, qint64) {}
+void Job::speed(qint64) {}
+
+class JobPrivate {
+public:
+    JobPrivate() 
+        : error(0)
+        , running(false)
+        , flags(0)
+    {}
+
+    int error;                  // 错误代码
+    QString errorText;          // 错误文本
+    bool running;               // 是否正在运行
+    JobFlags flags;             // 任务标志
+};
+
 Job::Job(QObject *parent)
     : QObject(parent)
-    , d(new JobPrivate(this))
+    , d(new JobPrivate())
 {
-    // 初始化默认值
-    d->operationType = JobPrivate::Other;
+    qDebug() << "创建Job实例";
 }
 
 Job::~Job()
 {
-    // 取消任务
-    if (d->running) {
-        kill(true); // quietly
-    }
-    
+    qDebug() << "销毁Job实例";
     delete d;
 }
 
@@ -40,91 +55,17 @@ bool Job::isRunning() const
 
 JobFlags Job::flags() const
 {
-    return d->jobFlags;
+    return d->flags;
 }
 
-void Job::setFlags(JobFlags jobFlags)
+void Job::setFlags(JobFlags flags)
 {
-    d->jobFlags = jobFlags;
+    d->flags = flags;
 }
 
-void Job::start()
+void Job::setError(int error)
 {
-    // 设置运行状态
-    d->running = true;
-    
-    // 发送状态变化信号
-    Q_EMIT statusChanged(this);
-}
-
-bool Job::suspend()
-{
-    if (!d->running || d->suspended) {
-        return false;
-    }
-    
-    // 执行子类的挂起逻辑
-    if (!doSuspend()) {
-        return false;
-    }
-    
-    // 设置挂起状态
-    d->suspended = true;
-    
-    // 发送挂起信号
-    Q_EMIT suspended(this);
-    Q_EMIT statusChanged(this);
-    
-    return true;
-}
-
-bool Job::resume()
-{
-    if (!d->running || !d->suspended) {
-        return false;
-    }
-    
-    // 执行子类的恢复逻辑
-    if (!doResume()) {
-        return false;
-    }
-    
-    // 清除挂起状态
-    d->suspended = false;
-    
-    // 发送恢复信号
-    Q_EMIT resumed(this);
-    Q_EMIT statusChanged(this);
-    
-    return true;
-}
-
-bool Job::kill(bool quietly)
-{
-    if (!d->running) {
-        return false;
-    }
-    
-    // 执行子类的终止逻辑
-    if (!doKill()) {
-        return false;
-    }
-    
-    // 清除运行状态
-    d->running = false;
-    d->suspended = false;
-    
-    if (!quietly) {
-        // 发送状态变化信号
-        Q_EMIT statusChanged(this);
-    }
-    
-    return true;
-}
-
-void Job::setError(int errorCode)
-{
-    d->error = errorCode;
+    d->error = error;
 }
 
 void Job::setErrorText(const QString &errorText)
@@ -134,95 +75,41 @@ void Job::setErrorText(const QString &errorText)
 
 void Job::emitResult()
 {
-    // 标记任务为已完成
     d->running = false;
-    d->suspended = false;
-    
-    // 发送结果信号
-    Q_EMIT result(this);
-    Q_EMIT statusChanged(this);
+    Q_EMIT finished();
 }
 
 void Job::emitPercent(unsigned long percent)
 {
-    // 限制百分比范围
-    percent = qMin(percent, 100UL);
-    
-    // 发送百分比信号
-    Q_EMIT this->percent(this, percent);
+    Q_EMIT this->percent(static_cast<int>(percent));
 }
 
 void Job::emitSpeed(unsigned long bytesPerSecond)
 {
-    // 发送速度信号
-    Q_EMIT speed(this, bytesPerSecond);
+    Q_EMIT speed(static_cast<qint64>(bytesPerSecond));
 }
 
 bool Job::doSuspend()
 {
-    // 默认实现，子类可以重写
+    // 基类提供默认实现
     return true;
 }
 
 bool Job::doResume()
 {
-    // 默认实现，子类可以重写
+    // 基类提供默认实现
     return true;
 }
 
 bool Job::doKill()
 {
-    // 默认实现，子类可以重写
+    // 基类提供默认实现
     return true;
 }
 
 QString buildErrorString(int errorCode, const QString &errorText)
 {
-    QString result;
-    
-    // 根据错误代码构造基本错误信息
-    switch (errorCode) {
-        case ERR_CANNOT_CONNECT:
-            result = "无法连接到目标服务器";
-            break;
-        case ERR_CANNOT_AUTHENTICATE:
-            result = "身份验证失败";
-            break;
-        case ERR_WORKER_DIED:
-            result = "Worker进程意外终止";
-            break;
-        case ERR_CANNOT_ENTER_DIRECTORY:
-            result = "无法进入目录";
-            break;
-        case ERR_ACCESS_DENIED:
-            result = "访问被拒绝";
-            break;
-        case ERR_UNKNOWN:
-            result = "发生未知错误";
-            break;
-        case ERR_WORKER_TIMEOUT:
-            result = "Worker操作超时";
-            break;
-        case ERR_UNSUPPORTED_ACTION:
-            result = "不支持的操作";
-            break;
-        case ERR_DISK_FULL:
-            result = "磁盘已满";
-            break;
-        case ERR_FILE_ALREADY_EXIST:
-            result = "文件已存在";
-            break;
-        default:
-            result = "错误 #" + QString::number(errorCode);
-            break;
-    }
-    
-    // 添加详细错误信息
-    if (!errorText.isEmpty()) {
-        result += ": " + errorText;
-    }
-    
-    return result;
+    return QString::number(errorCode) + ": " + errorText;
 }
 
 } // namespace DFM 

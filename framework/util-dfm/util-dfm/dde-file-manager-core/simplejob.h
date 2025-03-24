@@ -2,6 +2,7 @@
 #define DFM_SIMPLEJOB_H
 
 #include "job.h"
+#include "errorcodes.h"
 #include <QUrl>
 
 namespace DFM {
@@ -21,6 +22,26 @@ class SimpleJob : public Job {
 
 public:
     virtual ~SimpleJob();
+
+    /**
+     * @brief 实现Job::start
+     */
+    void start() override;
+    
+    /**
+     * @brief 实现Job::cancel
+     */
+    void cancel() override;
+    
+    /**
+     * @brief 实现Job::suspend
+     */
+    void suspend() override;
+    
+    /**
+     * @brief 实现Job::resume
+     */
+    void resume() override;
 
     /**
      * @brief 获取任务的URL
@@ -112,12 +133,22 @@ private:
 };
 
 /**
+ * @brief 创建自定义的SimpleJob子类
+ * 
+ * 提供一个自定义的SimpleJob子类，解决抽象类问题
+ */
+class CustomSimpleJob : public SimpleJob {
+public:
+    explicit CustomSimpleJob(const QUrl &url, QObject *parent = nullptr);
+};
+
+/**
  * @brief 创建文件删除任务
  * @param url 要删除的文件URL
  * @param flags 任务标志
  * @return 创建的任务
  */
-SimpleJob *file_delete(const QUrl &url, JobFlags flags = JobFlag::JOB_DEFAULT);
+SimpleJob *file_delete(const QUrl &url, JobFlags flags = JOB_DEFAULT);
 
 /**
  * @brief 创建目录删除任务
@@ -158,7 +189,7 @@ SimpleJob *setModificationTime(const QUrl &url, const QDateTime &mtime);
  * @param flags 任务标志
  * @return 创建的任务
  */
-SimpleJob *rename(const QUrl &src, const QUrl &dest, JobFlags flags = JobFlag::JOB_DEFAULT);
+SimpleJob *rename(const QUrl &src, const QUrl &dest, JobFlags flags = JOB_DEFAULT);
 
 /**
  * @brief 创建符号链接任务
@@ -167,7 +198,7 @@ SimpleJob *rename(const QUrl &src, const QUrl &dest, JobFlags flags = JobFlag::J
  * @param flags 任务标志
  * @return 创建的任务
  */
-SimpleJob *symlink(const QString &target, const QUrl &dest, JobFlags flags = JobFlag::JOB_DEFAULT);
+SimpleJob *symlink(const QString &target, const QUrl &dest, JobFlags flags = JOB_DEFAULT);
 
 /**
  * @brief 创建特殊命令任务
@@ -176,7 +207,7 @@ SimpleJob *symlink(const QString &target, const QUrl &dest, JobFlags flags = Job
  * @param flags 任务标志
  * @return 创建的任务
  */
-SimpleJob *special(const QUrl &url, const QByteArray &data, JobFlags flags = JobFlag::JOB_DEFAULT);
+SimpleJob *special(const QUrl &url, const QByteArray &data, JobFlags flags = JOB_DEFAULT);
 
 /**
  * @brief 创建磁盘使用统计任务
@@ -185,7 +216,7 @@ SimpleJob *special(const QUrl &url, const QByteArray &data, JobFlags flags = Job
  * @param flags 任务标志
  * @return 创建的任务
  */
-SimpleJob *du(const QUrl &url, bool recursive = false, JobFlags flags = JobFlag::JOB_DEFAULT);
+SimpleJob *du(const QUrl &url, bool recursive = false, JobFlags flags = JOB_DEFAULT);
 
 } // namespace DFM
 

@@ -75,7 +75,7 @@ public:
     void sendMetaData();
     void sendAndKeepMetaData();
 
-    void data(const QByteArray &data);
+    void sendData(const QByteArray &data);
     void dataReq();
     void workerStatus(const QString &host, bool connected);
     void canResume();
@@ -98,6 +98,30 @@ public:
     bool wasKilled() const;
     void lookupHost(const QString &host);
     void setIncomingMetaData(const MetaData &metaData);
+
+Q_SIGNALS:
+    /**
+     * @brief 当数据准备好时发出的信号
+     * @param data 数据内容
+     */
+    void data(const QByteArray &data);
+    
+    /**
+     * @brief 当连接断开时发出的信号
+     */
+    void disconnected();
+    
+    /**
+     * @brief 当操作完成时发出的信号
+     */
+    void finished();
+    
+    /**
+     * @brief 当发生错误时发出的信号
+     * @param code 错误代码
+     * @param message 错误消息
+     */
+    void error(int code, const QString &message);
 
 public: // Worker需要重写的虚函数
     virtual void appConnectionMade();

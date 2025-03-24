@@ -6,9 +6,13 @@ set(CORE_SOURCES
     connectionserver.cpp
     worker.cpp
     workerbase.cpp
+    # 恢复之前注释掉的文件
     workerinterface.cpp
     scheduler.cpp
     commands.cpp
+    # 添加新文件
+    job.cpp
+    simplejob.cpp
 )
 
 set(CORE_HEADERS
@@ -21,11 +25,16 @@ set(CORE_HEADERS
     worker_p.h
     workerbase.h
     workerbase_p.h
+    # 恢复之前注释掉的头文件
     workerinterface.h
     workerinterface_p.h
     scheduler.h
     scheduler_p.h
     commands.h
+    # 添加新头文件
+    job.h
+    simplejob.h
+    errorcodes.h
 )
 
 # 添加库

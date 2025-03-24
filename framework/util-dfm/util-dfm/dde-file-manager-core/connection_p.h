@@ -3,6 +3,7 @@
 
 #include "connection.h"
 #include <QList>
+#include <QMutex>
 
 namespace DFM {
 
@@ -27,6 +28,9 @@ public:
         , suspended(false)
         , readMode(Connection::ReadMode::EventDriven)
         , q(nullptr)
+        , inited(false)
+        , server(false)
+        , signalEmitted(false)
     {}
 
     /**
@@ -57,6 +61,10 @@ public:
     bool suspended;                     ///< 是否已挂起
     Connection::ReadMode readMode;      ///< 读取模式
     Connection *q;                      ///< 指向拥有者的指针
+    QMutex mutex;                       ///< 互斥锁
+    bool inited;                        ///< 是否已初始化
+    bool server;                        ///< 是否为服务器
+    bool signalEmitted;                 ///< 信号是否已发出
 };
 
 } // namespace DFM

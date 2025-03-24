@@ -3,11 +3,13 @@
 
 #include <QObject>
 #include <QByteArray>
+#include <memory>
 
 namespace DFM {
 
 class ConnectionBackend;
 class ConnectionPrivate;
+struct Task;
 
 /**
  * @class Connection
@@ -94,6 +96,24 @@ public:
     void connectToRemote(const QUrl &address);
 
     /**
+     * @brief 监听远程连接
+     * @return 如果监听成功，返回true
+     */
+    void listenForRemote();
+
+    /**
+     * @brief 获取下一个等待的连接
+     * @return 新的连接实例，如果没有连接则返回nullptr
+     */
+    Connection *nextPendingConnection();
+
+    /**
+     * @brief 设置挂起状态
+     * @param enable 是否启用挂起
+     */
+    void setSuspended(bool enable);
+
+    /**
      * @brief 发送命令到远程端点
      * @param cmd 命令ID
      * @param data 命令数据
@@ -138,11 +158,49 @@ public:
      */
     void setReadMode(ReadMode readMode);
 
+    /**
+     * @brief 处理发送任务队列
+     */
+    void processOutgoingTasks();
+
+    /**
+     * @brief 读取命令
+     * @return 读取的任务
+     */
+    Task readCommand();
+
 Q_SIGNALS:
     /**
      * @brief 当有数据可读时发出的信号
      */
     void readyRead();
+    
+    /**
+     * @brief 当连接断开时发出的信号
+     */
+    void disconnected();
+    
+    /**
+     * @brief 当有新连接时发出的信号
+     */
+    void newConnection();
+
+private Q_SLOTS:
+    /**
+     * @brief 处理接收到的任务
+     * @param task 任务数据
+     */
+    void slotGotTask(const Task &task);
+    
+    /**
+     * @brief 处理后端断开连接事件
+     */
+    void slotBackendDisconnected();
+    
+    /**
+     * @brief 处理新连接事件
+     */
+    void slotNewConnection();
 
 private:
     friend class Worker;

@@ -15,6 +15,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # 添加子项目
 add_subdirectory(dde-file-manager-core)
+# 恢复被注释的子项目
 add_subdirectory(dde-file-manager-worker)
 add_subdirectory(dde-file-manager-workers)
 add_subdirectory(tests)

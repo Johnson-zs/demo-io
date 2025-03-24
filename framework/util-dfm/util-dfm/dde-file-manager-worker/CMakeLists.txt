@@ -1,3 +1,4 @@
+# 恢复 worker 程序的构建
 set(WORKER_NAME dde-file-manager-worker)
 
 set(WORKER_SOURCES

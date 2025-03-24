@@ -4,13 +4,13 @@
 #include <QObject>
 #include <QUrl>
 #include <memory>
+#include <optional>
+#include "connection_p.h"  // 包含 Task 的完整定义
 
 class QLocalServer;
 class QLocalSocket;
 
 namespace DFM {
-
-struct Task;
 
 /**
  * @class ConnectionBackend
@@ -127,7 +127,7 @@ private Q_SLOTS:
     /**
      * @brief 处理新连接事件
      */
-    void newConnection();
+    void slotNewConnection();
 
 public:
     State state;             ///< 当前状态

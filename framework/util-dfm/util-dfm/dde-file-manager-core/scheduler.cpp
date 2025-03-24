@@ -2,6 +2,7 @@
 #include "scheduler_p.h"
 #include "worker.h"
 #include "simplejob.h"
+#include "errorcodes.h"
 #include <QDebug>
 
 namespace DFM {
