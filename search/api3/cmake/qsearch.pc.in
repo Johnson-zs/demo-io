@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=@CMAKE_INSTALL_PREFIX@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: @PROJECT_NAME@
+Description: Modern C++ and Qt6 based file search library for Linux
+Version: @PROJECT_VERSION@
+Requires: Qt6Core Qt6Concurrent
+Libs: -L${libdir} -lqsearch
+Cflags: -I${includedir} 
