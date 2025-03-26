@@ -13,6 +13,7 @@ enum class QueryType {
     Filename,       // 文件名搜索
     FileContent,    // 文件内容搜索
     Both,           // 文件名和内容
+    Application,    // 新增：应用程序搜索
     Extended        // 扩展搜索类型
 };
 

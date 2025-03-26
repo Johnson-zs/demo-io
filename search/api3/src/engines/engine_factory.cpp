@@ -1,6 +1,7 @@
 #include "qsearch/engines/engine_factory.h"
 #include "qsearch/engines/filename_engine.h"
 #include "qsearch/engines/fulltext_engine.h"
+#include "qsearch/engines/appdesktop_engine.h"
 #include <QMutex>
 #include <QMutexLocker>
 
@@ -18,6 +19,11 @@ struct EngineFactory::Impl {
         
         engineFactories["fulltext"] = [](QObject* parent) -> SearchEngine* { 
             return new FulltextSearchEngine(parent);
+        };
+        
+        // 注册应用搜索引擎
+        engineFactories["appdesktop"] = [](QObject* parent) -> SearchEngine* {
+            return new AppDesktopSearchEngine(parent);
         };
     }
 };
@@ -57,6 +63,8 @@ QSharedPointer<SearchEngine> EngineFactory::createEngineForQuery(const SearchQue
             return createEngine("filename");
         case QueryType::FileContent:
             return createEngine("fulltext");
+        case QueryType::Application:
+            return createEngine("appdesktop");
         case QueryType::Both: {
             // 对于复合查询，选择支持的引擎
             if (query.matchType() == MatchType::Regex || 
