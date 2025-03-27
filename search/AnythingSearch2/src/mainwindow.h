@@ -16,6 +16,8 @@
 #include <QStatusBar>
 #include <QLabel>
 #include <QCheckBox>
+#include <QMenu>
+#include <QAction>
 
 class MainWindow : public QMainWindow
 {
@@ -32,6 +34,11 @@ private slots:
     void onSearchStatusChanged(SearchManager::SearchStatus status, const QString &message);
     void onSearchOptionChanged();
     void onSearchResultsReady(const QVector<FileData> &results);
+    void showContextMenu(const QPoint &pos);
+    void openContainingFolder();
+    void openSelectedFile();
+    void copyFilePath();
+    void showSearchHelp();
 
 private:
     void setupUI();
@@ -59,6 +66,11 @@ private:
     
     void loadMoreResults();
     bool m_isLoadingMore = false;
+    
+    QMenu *m_contextMenu;
+    QAction *m_openFolderAction;
+    QAction *m_openFileAction;
+    QAction *m_copyPathAction;
 };
 
 #endif // MAINWINDOW_H 

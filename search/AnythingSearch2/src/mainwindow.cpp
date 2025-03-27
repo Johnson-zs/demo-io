@@ -3,6 +3,11 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QtConcurrent>
+#include <QDesktopServices>
+#include <QClipboard>
+#include <QMenu>
+#include <QDir>
+#include <QUrl>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_currentPath(QDir::homePath()), m_currentBatchSize(100), m_currentOffset(0)
@@ -41,6 +46,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_searchManager, &SearchManager::searchStatusChanged,
             this, &MainWindow::onSearchStatusChanged);
+
+    // 添加双击打开文件功能
+    connect(m_fileListView, &QListView::doubleClicked, this, &MainWindow::openSelectedFile);
 }
 
 MainWindow::~MainWindow()
@@ -59,9 +67,13 @@ void MainWindow::setupUI()
     m_pathButton = new QPushButton(this);
     m_pathButton->setIcon(QIcon(":/icons/folder.png"));
 
-    // 创建搜索框
+    // 创建搜索框布局，添加帮助按钮
+    QHBoxLayout *searchLayout = new QHBoxLayout();
+    searchLayout->setSpacing(5);
+    searchLayout->setContentsMargins(0, 0, 0, 0);
+    
     m_searchLineEdit = new QLineEdit(this);
-    m_searchLineEdit->setPlaceholderText("输入关键词搜索文件...");
+    m_searchLineEdit->setPlaceholderText("输入关键词搜索文件... (支持type:doc和py:pinyin语法)");
     m_searchLineEdit->setClearButtonEnabled(true);
     
     // 创建搜索选项
@@ -77,6 +89,18 @@ void MainWindow::setupUI()
     m_searchOptionsLayout->addWidget(m_fuzzySearchCheckBox);
     m_searchOptionsLayout->addStretch(); // 添加弹性空间
 
+    // 添加searchLayout代替直接添加m_searchLineEdit
+    searchLayout->addWidget(m_searchLineEdit, 1);
+    
+    QPushButton *helpButton = new QPushButton("?", this);
+    helpButton->setFixedSize(24, 24);
+    helpButton->setToolTip("搜索帮助");
+    connect(helpButton, &QPushButton::clicked, this, &MainWindow::showSearchHelp);
+    searchLayout->addWidget(helpButton);
+    
+    // 添加searchLayout到主布局
+    mainLayout->addLayout(searchLayout);
+
     // 创建文件列表视图
     m_fileListView = new QListView(this);
     m_fileListView->setUniformItemSizes(true);
@@ -90,9 +114,24 @@ void MainWindow::setupUI()
     m_fileDelegate = new FileItemDelegate(this);
     m_fileListView->setItemDelegate(m_fileDelegate);
 
+    // 创建右键菜单
+    m_contextMenu = new QMenu(this);
+    m_openFolderAction = m_contextMenu->addAction("打开所在文件夹");
+    m_openFileAction = m_contextMenu->addAction("打开文件");
+    m_copyPathAction = m_contextMenu->addAction("复制文件路径");
+    
+    // 连接信号
+    connect(m_openFolderAction, &QAction::triggered, this, &MainWindow::openContainingFolder);
+    connect(m_openFileAction, &QAction::triggered, this, &MainWindow::openSelectedFile);
+    connect(m_copyPathAction, &QAction::triggered, this, &MainWindow::copyFilePath);
+    
+    // 连接列表视图的自定义上下文菜单
+    m_fileListView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_fileListView, &QListView::customContextMenuRequested, 
+            this, &MainWindow::showContextMenu);
+
     // 添加组件到布局
     mainLayout->addWidget(m_pathButton);
-    mainLayout->addWidget(m_searchLineEdit);
     mainLayout->addLayout(m_searchOptionsLayout);
     mainLayout->addWidget(m_fileListView, 1);
 
@@ -257,4 +296,89 @@ void MainWindow::onSearchStatusChanged(SearchManager::SearchStatus status, const
         QApplication::restoreOverrideCursor();
         break;
     }
+}
+
+void MainWindow::showContextMenu(const QPoint &pos)
+{
+    // 获取点击的项目索引
+    QModelIndex index = m_fileListView->indexAt(pos);
+    
+    if (index.isValid()) {
+        // 启用所有操作
+        m_openFolderAction->setEnabled(true);
+        m_openFileAction->setEnabled(true);
+        m_copyPathAction->setEnabled(true);
+        
+        // 检查是否是目录
+        bool isDirectory = m_fileModel->data(index, FileListModel::IsDirectoryRole).toBool();
+        if (isDirectory) {
+            m_openFileAction->setText("打开文件夹");
+        } else {
+            m_openFileAction->setText("打开文件");
+        }
+        
+        // 显示上下文菜单
+        m_contextMenu->exec(m_fileListView->viewport()->mapToGlobal(pos));
+    }
+}
+
+void MainWindow::openContainingFolder()
+{
+    QModelIndex index = m_fileListView->currentIndex();
+    if (index.isValid()) {
+        QString filePath = m_fileModel->data(index, FileListModel::PathRole).toString();
+        QFileInfo fileInfo(filePath);
+        
+        // 获取文件所在的目录
+        QString directoryPath = fileInfo.dir().absolutePath();
+        
+        // 使用默认程序打开文件夹
+        QUrl directoryUrl = QUrl::fromLocalFile(directoryPath);
+        QDesktopServices::openUrl(directoryUrl);
+    }
+}
+
+void MainWindow::openSelectedFile()
+{
+    QModelIndex index = m_fileListView->currentIndex();
+    if (index.isValid()) {
+        QString filePath = m_fileModel->data(index, FileListModel::PathRole).toString();
+        
+        // 使用默认程序打开文件
+        QUrl fileUrl = QUrl::fromLocalFile(filePath);
+        QDesktopServices::openUrl(fileUrl);
+    }
+}
+
+void MainWindow::copyFilePath()
+{
+    QModelIndex index = m_fileListView->currentIndex();
+    if (index.isValid()) {
+        QString filePath = m_fileModel->data(index, FileListModel::PathRole).toString();
+        
+        // 复制路径到剪贴板
+        QClipboard *clipboard = QApplication::clipboard();
+        clipboard->setText(filePath);
+        
+        // 提示用户
+        m_statusLabel->setText("已复制: " + filePath);
+    }
+}
+
+// 添加搜索帮助方法
+void MainWindow::showSearchHelp()
+{
+    QMessageBox::information(this, "搜索帮助", 
+        "基本搜索:\n"
+        "  直接输入关键词搜索文件名\n\n"
+        "文件类型搜索:\n"
+        "  type:doc,pdf - 搜索指定类型的文件\n"
+        "  report type:xlsx - 搜索名称包含'report'的Excel文件\n\n"
+        "拼音搜索:\n"
+        "  py:zhang - 搜索拼音包含'zhang'的文件\n"
+        "  py:zhang,li - 搜索拼音包含'zhang'或'li'的文件\n"
+        "  文档 py:wendang - 搜索名称包含'文档'且拼音含'wendang'的文件\n\n"
+        "搜索选项:\n"
+        "  区分大小写 - 启用大小写敏感搜索\n"
+        "  模糊搜索 - 查找拼写相近的文件");
 }

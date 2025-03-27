@@ -3,6 +3,7 @@
 #include <QFileInfo>
 #include <QDebug>
 #include <unistd.h>
+#include <QRegularExpression>
 
 using namespace Lucene;
 
@@ -39,21 +40,20 @@ QString LuceneSearchEngine::getHomeDirectory() const
     return homeDir;
 }
 
-QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, 
-                                                  const QString &key, 
-                                                  bool nrt,
-                                                  bool caseSensitive,
-                                                  bool fuzzySearch) const
+QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath,
+                                                    const QString &key,
+                                                    bool nrt,
+                                                    bool caseSensitive,
+                                                    bool fuzzySearch) const
 {
     // 使用缓存：如果搜索关键词与上次相同且搜索选项也相同，直接返回缓存的结果
-    if (!nrt && key == m_lastKeyword && !m_lastSearchResults.isEmpty() && 
-        caseSensitive == m_lastCaseSensitive && fuzzySearch == m_lastFuzzySearch) {
+    if (!nrt && key == m_lastKeyword && !m_lastSearchResults.isEmpty() && caseSensitive == m_lastCaseSensitive && fuzzySearch == m_lastFuzzySearch) {
         return m_lastSearchResults;
     }
-    
+
     // 在方法开始处重置取消标志
     m_searchCancelled = false;
-    
+
     QString keywords = key;
     QString path = originPath;
     if (path.startsWith(QDir::homePath()))
@@ -98,10 +98,11 @@ QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath,
 
         // 创建过滤器，仅搜索指定路径下的文件
         FilterPtr pathFilter = newLucene<PrefixFilter>(
-            newLucene<Term>(L"full_path", StringUtils::toUnicode(path.toStdString())));
-        
-        // 使用过滤器执行搜索
-        TopDocsPtr search_results = searcher->search(query, pathFilter, max_results);
+                newLucene<Term>(L"full_path", StringUtils::toUnicode(path.toStdString())));
+
+        // 使用过滤器执行搜索 too slow!!!
+        // TopDocsPtr search_results = searcher->search(query, pathFilter, max_results);
+        TopDocsPtr search_results = searcher->search(query, max_results);
 
         QStringList results;
         results.reserve(search_results->scoreDocs.size());
@@ -142,7 +143,7 @@ QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath,
             m_lastCaseSensitive = caseSensitive;
             m_lastFuzzySearch = fuzzySearch;
         }
-        
+
         return results;
     } catch (const LuceneException &e) {
         qWarning() << "Lucene搜索异常:" << QString::fromStdWString(e.getError());
@@ -182,12 +183,12 @@ QVector<FileData> LuceneSearchEngine::getAllFiles(int limit) const
 }
 
 QVector<FileData> LuceneSearchEngine::searchFiles(const QString &keyword,
-                                                bool caseSensitive,
-                                                bool fuzzySearch) const
+                                                  bool caseSensitive,
+                                                  bool fuzzySearch) const
 {
     // 这里设置一个标志，防止在执行过程中主线程阻塞
     m_searchCancelled = false;
-    
+
     try {
         QStringList paths = performLuceneSearch(m_currentPath, keyword, false, caseSensitive, fuzzySearch);
         return convertToFileData(paths);
@@ -207,10 +208,10 @@ void LuceneSearchEngine::clearCache()
 }
 
 QVector<FileData> LuceneSearchEngine::searchFilesBatch(const QString &keyword,
-                                                     int offset,
-                                                     int limit,
-                                                     bool caseSensitive,
-                                                     bool fuzzySearch) const
+                                                       int offset,
+                                                       int limit,
+                                                       bool caseSensitive,
+                                                       bool fuzzySearch) const
 {
     if (keyword.isEmpty() || limit <= 0) {
         return QVector<FileData>();
@@ -219,15 +220,15 @@ QVector<FileData> LuceneSearchEngine::searchFilesBatch(const QString &keyword,
     try {
         // 获取搜索结果
         QStringList allPaths = performLuceneSearch(m_currentPath, keyword, false, caseSensitive, fuzzySearch);
-        
+
         // 计算分页
         int startIdx = qMin(offset, allPaths.size());
         int endIdx = qMin(offset + limit, allPaths.size());
-        
+
         if (startIdx >= endIdx) {
             return QVector<FileData>();
         }
-        
+
         // 只转换需要的部分
         QStringList batchPaths = allPaths.mid(startIdx, endIdx - startIdx);
         return convertToFileData(batchPaths);
@@ -237,12 +238,12 @@ QVector<FileData> LuceneSearchEngine::searchFilesBatch(const QString &keyword,
 }
 
 int LuceneSearchEngine::getSearchResultCount(const QString &keyword,
-                                           bool caseSensitive,
-                                           bool fuzzySearch) const
+                                             bool caseSensitive,
+                                             bool fuzzySearch) const
 {
     // 确保重置取消标志
     m_searchCancelled = false;
-    
+
     // 获取匹配数量
     QStringList allPaths = performLuceneSearch(m_currentPath, keyword, false, caseSensitive, fuzzySearch);
     return allPaths.size();
@@ -254,7 +255,7 @@ LuceneSearchEngine::SearchType LuceneSearchEngine::determineSearchType(const QSt
     if (fuzzySearch) {
         return SearchType::Fuzzy;
     }
-    
+
     // 如果包含空格，则为布尔搜索
     if (keyword.contains(' ')) {
         return SearchType::Boolean;
@@ -269,19 +270,109 @@ LuceneSearchEngine::SearchType LuceneSearchEngine::determineSearchType(const QSt
     return SearchType::Simple;
 }
 
-Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword, 
-                                                    bool caseSensitive,
-                                                    bool fuzzySearch) const
+Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword,
+                                                      bool caseSensitive,
+                                                      bool fuzzySearch) const
 {
-    // 星号表示全部匹配
-    if (keyword == "*") {
-        return newLucene<MatchAllDocsQuery>();
+    // 检查是否包含拼音搜索语法
+    QRegularExpression pinyinRegex("py:([\\w,]+)");
+    QRegularExpressionMatch pinyinMatch = pinyinRegex.match(keyword);
+    
+    if (pinyinMatch.hasMatch()) {
+        // 提取拼音列表和其他关键词
+        QString pinyinList = pinyinMatch.captured(1);
+        QString remainingKeyword = keyword;
+        remainingKeyword.replace(pinyinMatch.captured(0), "").trimmed();
+        
+        // 将拼音字符串分割成列表
+        QStringList pinyins = pinyinList.split(',', Qt::SkipEmptyParts);
+        
+        // 构建拼音查询
+        BooleanQueryPtr query = newLucene<BooleanQuery>();
+        
+        // 添加拼音条件
+        if (!pinyins.isEmpty()) {
+            BooleanQueryPtr pinyinQuery = newLucene<BooleanQuery>();
+            
+            for (const QString &pinyin : pinyins) {
+                QString cleanPinyin = pinyin.trimmed().toLower();
+                
+                if (!cleanPinyin.isEmpty()) {
+                    // 创建拼音词项查询
+                    QueryPtr termQuery = newLucene<WildcardQuery>(
+                        newLucene<Term>(L"pinyin", 
+                        StringUtils::toUnicode(QString("*%1*").arg(cleanPinyin).toStdString())));
+                    
+                    // 添加到拼音查询 (OR关系)
+                    pinyinQuery->add(termQuery, BooleanClause::SHOULD);
+                }
+            }
+            
+            // 添加拼音查询到主查询
+            query->add(pinyinQuery, BooleanClause::MUST);
+        }
+        
+        // 如果还有其他关键词，添加文件名条件
+        if (!remainingKeyword.isEmpty()) {
+            QueryPtr nameQuery = buildSearchQuery(remainingKeyword, caseSensitive, fuzzySearch);
+            query->add(nameQuery, BooleanClause::MUST);
+        }
+        
+        return query;
+    }
+    
+    // 检查是否包含文件类型搜索语法
+    QRegularExpression typeRegex("type:([\\w,]+)");
+    QRegularExpressionMatch match = typeRegex.match(keyword);
+    
+    if (match.hasMatch()) {
+        // 提取文件类型列表和其他关键词
+        QString typeList = match.captured(1);
+        QString remainingKeyword = keyword;
+        remainingKeyword.replace(match.captured(0), "").trimmed();
+        
+        // 将类型字符串分割成列表
+        QStringList types = typeList.split(',', Qt::SkipEmptyParts);
+        
+        // 构建文件类型查询
+        BooleanQueryPtr query = newLucene<BooleanQuery>();
+        
+        // 添加文件类型条件
+        if (!types.isEmpty()) {
+            BooleanQueryPtr typeQuery = newLucene<BooleanQuery>();
+            
+            for (const QString &type : types) {
+                QString cleanType = type.trimmed().toLower();
+                
+                if (!cleanType.isEmpty()) {
+                    // 创建类型词项查询
+                    QueryPtr termQuery = newLucene<TermQuery>(
+                            newLucene<Term>(L"file_type",
+                                            StringUtils::toUnicode(cleanType.toStdString())));
+                    
+                    // 添加到类型查询 (OR关系)
+                    typeQuery->add(termQuery, BooleanClause::SHOULD);
+                }
+            }
+            
+            // 添加类型查询到主查询
+            query->add(typeQuery, BooleanClause::MUST);
+        }
+        
+        // 如果还有其他关键词，添加文件名条件
+        if (!remainingKeyword.isEmpty()) {
+            QueryPtr nameQuery = buildSearchQuery(remainingKeyword, caseSensitive, fuzzySearch);
+            query->add(nameQuery, BooleanClause::MUST);
+        }
+        
+        return query;
     }
 
+    // 确定搜索类型
     SearchType searchType = determineSearchType(keyword, fuzzySearch);
-    
-    // 处理字符串的函数，根据大小写敏感设置决定是否转换为小写
-    auto processString = [caseSensitive](const std::wstring& str) -> std::wstring {
+
+    // 创建查询项时处理大小写敏感
+    auto processString = [caseSensitive](const String &str) -> String {
         if (caseSensitive) {
             return str;
         } else {
@@ -293,26 +384,26 @@ Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword,
     case SearchType::Fuzzy: {
         // 模糊搜索实现 - 不使用 FuzzyQuery，而是使用 WildcardQuery 和自定义匹配
         BooleanQueryPtr booleanQuery = newLucene<BooleanQuery>();
-        
+
         // 设置最大子句数量
         booleanQuery->setMaxClauseCount(1024);
-        
+
         // 分割关键词
         QStringList terms = keyword.split(' ', Qt::SkipEmptyParts);
-        
+
         for (const QString &term : terms) {
             if (term.isEmpty()) continue;
-            
+
             // 创建一个布尔子查询，让一个词可以匹配多种模式
             BooleanQueryPtr termQuery = newLucene<BooleanQuery>();
-            
+
             // 1. 添加精确匹配 (加权最高)
             String exactTerm = processString(StringUtils::toUnicode(term.toStdString()));
             QueryPtr exactQuery = newLucene<TermQuery>(newLucene<Term>(L"file_name", exactTerm));
             // 提高精确匹配的权重
             exactQuery->setBoost(3.0);
             termQuery->add(exactQuery, BooleanClause::SHOULD);
-            
+
             // 2. 添加前缀匹配
             if (term.length() > 2) {
                 String prefixTerm = processString(StringUtils::toUnicode(term.toStdString()));
@@ -320,41 +411,41 @@ Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword,
                 prefixQuery->setBoost(2.0);
                 termQuery->add(prefixQuery, BooleanClause::SHOULD);
             }
-            
+
             // 3. 添加通配符匹配 (允许中间有一个字符不同)
             if (term.length() > 3) {
                 for (int i = 1; i < term.length() - 1; i++) {
-                    QString fuzzyPattern = term.left(i) + "*" + term.mid(i+1);
+                    QString fuzzyPattern = term.left(i) + "*" + term.mid(i + 1);
                     String wildcardTerm = processString(StringUtils::toUnicode(fuzzyPattern.toStdString()));
                     QueryPtr wildcardQuery = newLucene<WildcardQuery>(newLucene<Term>(L"file_name", wildcardTerm));
                     wildcardQuery->setBoost(1.0);
                     termQuery->add(wildcardQuery, BooleanClause::SHOULD);
                 }
             }
-            
+
             // 4. 添加包含匹配 (匹配包含该词的结果)
             String containsTerm = L"*" + processString(StringUtils::toUnicode(term.toStdString())) + L"*";
             QueryPtr containsQuery = newLucene<WildcardQuery>(newLucene<Term>(L"file_name", containsTerm));
             containsQuery->setBoost(1.5);
             termQuery->add(containsQuery, BooleanClause::SHOULD);
-            
+
             // 将该词的所有可能匹配添加到主查询
             booleanQuery->add(termQuery, BooleanClause::MUST);
         }
-        
+
         return booleanQuery;
     }
 
     case SearchType::Boolean: {
         // 空格分隔的关键词，构建布尔查询
         BooleanQueryPtr booleanQuery = newLucene<BooleanQuery>();
-        
+
         // 设置最大子句数量，提高性能
         booleanQuery->setMaxClauseCount(1024);
-        
+
         // 分割关键词
         QStringList terms = keyword.split(' ', Qt::SkipEmptyParts);
-        
+
         for (const QString &term : terms) {
             if (!term.isEmpty()) {
                 // 为每个关键词创建通配符查询
@@ -366,7 +457,7 @@ Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword,
                 booleanQuery->add(termQuery, BooleanClause::MUST);
             }
         }
-        
+
         return booleanQuery;
     }
 
@@ -389,12 +480,12 @@ void LuceneSearchEngine::warmupIndex() const
     try {
         QString indexDir = getIndexDirectory();
         FSDirectoryPtr directory = FSDirectory::open(StringUtils::toUnicode(indexDir.toStdString()));
-        
+
         if (IndexReader::indexExists(directory)) {
             // 预热索引 - 打开再关闭
             IndexReaderPtr reader = IndexReader::open(directory, true);
             SearcherPtr searcher = newLucene<IndexSearcher>(reader);
-            
+
             // 执行简单查询预热搜索机制
             TermPtr term = newLucene<Term>(L"file_name", L"*");
             QueryPtr query = newLucene<WildcardQuery>(term);
