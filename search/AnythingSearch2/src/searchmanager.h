@@ -7,6 +7,8 @@
 #include <memory>
 #include "filedata.h"
 #include "searchengine.h"
+#include <QFuture>
+#include <QFutureWatcher>
 
 class SearchManager : public QObject
 {
@@ -52,11 +54,17 @@ public:
     // 取消当前搜索
     void cancelSearch();
 
+    // 异步搜索方法
+    void searchFilesAsync(const QString &keyword);
+
 signals:
     // 搜索状态变化信号
     void searchStatusChanged(SearchStatus status, const QString &message = QString());
     // 搜索进度信号
     void searchProgressUpdated(int current, int total);
+    
+    // 搜索结果就绪信号
+    void searchResultsReady(const QVector<FileData> &results);
 
 private slots:
     void onDirectoryChanged(const QString &path);
@@ -67,6 +75,10 @@ private:
     QFileSystemWatcher m_fileWatcher;
     std::unique_ptr<ISearchEngine> m_searchEngine;
     SearchStatus m_currentStatus;
+    
+    // 异步搜索结果
+    mutable QFuture<QVector<FileData>> m_searchFuture;
+    mutable QFutureWatcher<QVector<FileData>> m_searchWatcher;
 };
 
 #endif // SEARCHMANAGER_H 

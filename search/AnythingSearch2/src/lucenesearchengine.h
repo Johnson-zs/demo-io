@@ -22,6 +22,9 @@ public:
     QVector<FileData> searchFilesBatch(const QString &keyword, int offset, int limit) const override;
     int getSearchResultCount(const QString &keyword) const override;
     
+    // 预热索引以提高首次搜索性能
+    void warmupIndex() const;
+    
 private:
     QString getIndexDirectory() const;
     QString getHomeDirectory() const;
@@ -44,6 +47,10 @@ private:
     QString m_currentPath;
     mutable QVector<FileData> m_cachedAllFiles;
     mutable std::atomic<bool> m_searchCancelled;
+    
+    // 添加缓存最近的搜索结果
+    mutable QString m_lastKeyword;
+    mutable QStringList m_lastSearchResults;
 };
 
 #endif // LUCENESEARCHENGINE_H 

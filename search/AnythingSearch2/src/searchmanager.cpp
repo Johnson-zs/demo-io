@@ -15,6 +15,14 @@ SearchManager::SearchManager(QObject *parent)
     
     connect(&m_fileWatcher, &QFileSystemWatcher::directoryChanged,
             this, &SearchManager::onDirectoryChanged);
+    
+    connect(&m_searchWatcher, &QFutureWatcher<QVector<FileData>>::finished,
+            this, [this]() {
+                QVector<FileData> results = m_searchFuture.result();
+                QString statusMessage = QString("找到 %1 个文件").arg(results.size());
+                emit searchStatusChanged(Completed, statusMessage);
+                emit searchResultsReady(results);
+            });
 }
 
 void SearchManager::setSearchEngineType(SearchEngineType type)
@@ -89,7 +97,8 @@ QVector<FileData> SearchManager::searchFilesBatch(const QString &keyword, int of
     QVector<FileData> results = m_searchEngine->searchFilesBatch(keyword, offset, limit);
     
     if (offset == 0) { // 只在首次搜索完成时更新状态
-        int total = getSearchResultCount(keyword);
+        // 注意：这里直接使用cached结果的数量，避免重复搜索
+        int total = m_searchEngine->getSearchResultCount(keyword);
         QString statusMessage = QString("找到 %1 个文件").arg(total);
         emit const_cast<SearchManager*>(this)->searchStatusChanged(Completed, statusMessage);
     }
@@ -129,4 +138,27 @@ void SearchManager::cancelSearch()
         m_searchEngine->cancelSearch();
     }
     emit searchStatusChanged(Idle, "搜索已取消");
+}
+
+void SearchManager::searchFilesAsync(const QString &keyword)
+{
+    if (keyword.isEmpty()) {
+        emit searchStatusChanged(Idle, "搜索已取消");
+        emit searchResultsReady(QVector<FileData>());
+        return;
+    }
+    
+    emit searchStatusChanged(Searching, "正在搜索...");
+    
+    // 取消之前的搜索
+    if (m_searchFuture.isRunning()) {
+        m_searchEngine->cancelSearch();
+    }
+    
+    // 启动异步搜索
+    m_searchFuture = QtConcurrent::run([this, keyword]() {
+        return m_searchEngine->searchFiles(keyword);
+    });
+    
+    m_searchWatcher.setFuture(m_searchFuture);
 } 

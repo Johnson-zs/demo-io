@@ -39,6 +39,11 @@ QString LuceneSearchEngine::getHomeDirectory() const
 
 QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, const QString &key, bool nrt) const
 {
+    // 使用缓存：如果搜索关键词与上次相同，直接返回缓存的结果
+    if (!nrt && key == m_lastKeyword && !m_lastSearchResults.isEmpty()) {
+        return m_lastSearchResults;
+    }
+    
     // 在方法开始处重置取消标志
     m_searchCancelled = false;
     
@@ -84,8 +89,12 @@ QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, c
         // 使用正确的方法调用
         Lucene::QueryPtr query = buildSearchQuery(keywords);
 
-        // 执行搜索
-        TopDocsPtr search_results = searcher->search(query, max_results);
+        // 创建过滤器，仅搜索指定路径下的文件
+        FilterPtr pathFilter = newLucene<PrefixFilter>(
+            newLucene<Term>(L"full_path", StringUtils::toUnicode(path.toStdString())));
+        
+        // 使用过滤器执行搜索
+        TopDocsPtr search_results = searcher->search(query, pathFilter, max_results);
 
         QStringList results;
         results.reserve(search_results->scoreDocs.size());
@@ -119,6 +128,12 @@ QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, c
         // 合并结果（O(1) 时间复杂度操作）
         results = std::move(dirs) + std::move(files);
 
+        // 存储结果到缓存
+        if (!nrt) {
+            m_lastKeyword = key;
+            m_lastSearchResults = results;
+        }
+        
         return results;
     } catch (const LuceneException &e) {
         qWarning() << "Lucene搜索异常:" << QString::fromStdWString(e.getError());
@@ -240,6 +255,9 @@ Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword) co
         // 空格分隔的关键词，构建布尔查询
         BooleanQueryPtr booleanQuery = newLucene<BooleanQuery>();
         
+        // 设置最大子句数量，提高性能
+        booleanQuery->setMaxClauseCount(1024);
+        
         // 分割关键词
         QStringList terms = keyword.split(' ', Qt::SkipEmptyParts);
         
@@ -269,5 +287,26 @@ Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword) co
         // 简单查询，加上前后通配符
         String queryString = L"*" + StringUtils::toLower(StringUtils::toUnicode(keyword.toStdString())) + L"*";
         return newLucene<WildcardQuery>(newLucene<Term>(L"file_name", queryString));
+    }
+}
+
+void LuceneSearchEngine::warmupIndex() const
+{
+    try {
+        QString indexDir = getIndexDirectory();
+        FSDirectoryPtr directory = FSDirectory::open(StringUtils::toUnicode(indexDir.toStdString()));
+        
+        if (IndexReader::indexExists(directory)) {
+            // 预热索引 - 打开再关闭
+            IndexReaderPtr reader = IndexReader::open(directory, true);
+            SearcherPtr searcher = newLucene<IndexSearcher>(reader);
+            
+            // 执行简单查询预热搜索机制
+            TermPtr term = newLucene<Term>(L"file_name", L"*");
+            QueryPtr query = newLucene<WildcardQuery>(term);
+            searcher->search(query, 10);
+        }
+    } catch (...) {
+        // 预热失败不影响主功能
     }
 }
