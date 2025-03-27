@@ -8,6 +8,7 @@
 
 SearchManager::SearchManager(QObject *parent)
     : QObject(parent)
+    , m_currentStatus(Idle)
 {
     // 默认使用Lucene搜索引擎，因为已经添加了依赖
     m_searchEngine = std::make_unique<LuceneSearchEngine>();
@@ -60,7 +61,45 @@ QVector<FileData> SearchManager::getAllFiles(int limit) const
 
 QVector<FileData> SearchManager::searchFiles(const QString &keyword) const
 {
-    return m_searchEngine->searchFiles(keyword);
+    if (keyword.isEmpty()) {
+        emit const_cast<SearchManager*>(this)->searchStatusChanged(Idle, "搜索已取消");
+        return QVector<FileData>();
+    }
+    
+    emit const_cast<SearchManager*>(this)->searchStatusChanged(Searching, "正在搜索...");
+    
+    QVector<FileData> results = m_searchEngine->searchFiles(keyword);
+    
+    QString statusMessage = QString("找到 %1 个文件").arg(results.size());
+    emit const_cast<SearchManager*>(this)->searchStatusChanged(Completed, statusMessage);
+    
+    return results;
+}
+
+QVector<FileData> SearchManager::searchFilesBatch(const QString &keyword, int offset, int limit) const
+{
+    if (keyword.isEmpty()) {
+        return QVector<FileData>();
+    }
+    
+    if (offset == 0) { // 首次搜索
+        emit const_cast<SearchManager*>(this)->searchStatusChanged(Searching, "正在搜索...");
+    }
+    
+    QVector<FileData> results = m_searchEngine->searchFilesBatch(keyword, offset, limit);
+    
+    if (offset == 0) { // 只在首次搜索完成时更新状态
+        int total = getSearchResultCount(keyword);
+        QString statusMessage = QString("找到 %1 个文件").arg(total);
+        emit const_cast<SearchManager*>(this)->searchStatusChanged(Completed, statusMessage);
+    }
+    
+    return results;
+}
+
+int SearchManager::getSearchResultCount(const QString &keyword) const
+{
+    return m_searchEngine->getSearchResultCount(keyword);
 }
 
 void SearchManager::onDirectoryChanged(const QString &path)
@@ -74,4 +113,20 @@ void SearchManager::reindexFiles()
     if (!m_currentPath.isEmpty()) {
         m_searchEngine->updateSearchPath(m_currentPath);
     }
+}
+
+void SearchManager::clearSearchResults()
+{
+    if (m_searchEngine) {
+        m_searchEngine->clearCache();
+    }
+    emit searchStatusChanged(Idle, "");
+}
+
+void SearchManager::cancelSearch()
+{
+    if (m_searchEngine) {
+        m_searchEngine->cancelSearch();
+    }
+    emit searchStatusChanged(Idle, "搜索已取消");
 } 

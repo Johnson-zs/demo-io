@@ -4,6 +4,8 @@
 #include <QApplication>
 #include <QFileInfo>
 #include <QDateTime>
+#include <QTextDocument>
+#include <QRegularExpression>
 
 FileItemDelegate::FileItemDelegate(QObject *parent)
     : QStyledItemDelegate(parent)
@@ -47,14 +49,78 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     QRect textRect = opt.rect;
     textRect.setLeft(iconRect.right() + 5);
     
-    // 绘制文件名
+    // 获取高亮关键词
+    QString keyword = index.model()->property("highlightKeyword").toString();
+    
+    // 绘制文件名（带高亮）
     QFont nameFont = painter->font();
     nameFont.setBold(true);
     painter->setFont(nameFont);
     
     QRect nameRect = textRect;
     nameRect.setHeight(textRect.height() / 2);
-    painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
+    
+    // 绘制普通文本
+    if (keyword.isEmpty()) {
+        painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
+    } else {
+        // 直接绘制高亮文本
+        QStringList keywords = keyword.split(' ', Qt::SkipEmptyParts);
+        QString nameToDraw = name;
+        
+        // 计算每个关键词在文本中的位置
+        QVector<QPair<int, int>> highlightPositions;
+        
+        for (const QString &kw : keywords) {
+            int pos = 0;
+            while ((pos = nameToDraw.toLower().indexOf(kw.toLower(), pos)) != -1) {
+                highlightPositions.append(qMakePair(pos, kw.length()));
+                pos += kw.length();
+            }
+        }
+        
+        // 按位置排序
+        std::sort(highlightPositions.begin(), highlightPositions.end(), 
+                 [](const QPair<int, int> &a, const QPair<int, int> &b) {
+                     return a.first < b.first;
+                 });
+        
+        // 绘制文本和高亮
+        int currentPos = 0;
+        int textX = nameRect.left();
+        
+        for (const auto &highlight : highlightPositions) {
+            // 绘制高亮前的文本
+            if (highlight.first > currentPos) {
+                QString beforeText = nameToDraw.mid(currentPos, highlight.first - currentPos);
+                QRect beforeRect = nameRect;
+                beforeRect.setLeft(textX);
+                painter->drawText(beforeRect, Qt::AlignLeft | Qt::AlignVCenter, beforeText);
+                textX += painter->fontMetrics().horizontalAdvance(beforeText);
+            }
+            
+            // 绘制高亮背景
+            QString highlightedText = nameToDraw.mid(highlight.first, highlight.second);
+            QRect highlightRect = nameRect;
+            highlightRect.setLeft(textX);
+            highlightRect.setWidth(painter->fontMetrics().horizontalAdvance(highlightedText));
+            painter->fillRect(highlightRect, QColor(255, 255, 0, 128)); // 半透明黄色
+            
+            // 绘制高亮文本
+            painter->drawText(highlightRect, Qt::AlignLeft | Qt::AlignVCenter, highlightedText);
+            
+            textX += highlightRect.width();
+            currentPos = highlight.first + highlight.second;
+        }
+        
+        // 绘制剩余文本
+        if (currentPos < nameToDraw.length()) {
+            QString afterText = nameToDraw.mid(currentPos);
+            QRect afterRect = nameRect;
+            afterRect.setLeft(textX);
+            painter->drawText(afterRect, Qt::AlignLeft | Qt::AlignVCenter, afterText);
+        }
+    }
     
     // 绘制详细信息
     QFont detailFont = painter->font();
@@ -85,6 +151,39 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     }
     
     painter->drawText(detailRect, Qt::AlignLeft | Qt::AlignVCenter, details);
+}
+
+QString FileItemDelegate::highlightText(const QString &text, const QString &highlight) const
+{
+    if (highlight.isEmpty()) {
+        return text;
+    }
+    
+    // 拆分搜索关键词（按空格分割）
+    QStringList keywords = highlight.split(' ', Qt::SkipEmptyParts);
+    
+    // 创建临时文档用于处理HTML
+    QTextDocument doc;
+    
+    // 使用纯文本作为起点
+    QString plainText = text;
+    QString htmlText = QString("<span style=\"color: %1;\">%2</span>")
+                        .arg(QApplication::palette().text().color().name(), 
+                             plainText.toHtmlEscaped());
+    
+    // 为每个关键词添加高亮
+    for (const QString &keyword : keywords) {
+        if (keyword.isEmpty()) continue;
+        
+        // 使用Qt的文本文档处理高亮
+        QRegularExpression regex(QRegularExpression::escape(keyword), 
+                                QRegularExpression::CaseInsensitiveOption);
+        
+        htmlText.replace(regex, 
+                        QString("<span style=\"background-color: yellow;\">\\0</span>"));
+    }
+    
+    return htmlText;
 }
 
 QSize FileItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const

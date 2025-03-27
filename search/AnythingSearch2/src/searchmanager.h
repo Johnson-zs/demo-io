@@ -18,6 +18,14 @@ public:
         Lucene
     };
 
+    // 搜索状态枚举
+    enum SearchStatus {
+        Idle,           // 空闲
+        Searching,      // 正在搜索
+        Completed,      // 搜索完成
+        Error           // 发生错误
+    };
+
     explicit SearchManager(QObject *parent = nullptr);
     
     // 设置搜索引擎类型
@@ -32,6 +40,24 @@ public:
     // 搜索文件
     QVector<FileData> searchFiles(const QString &keyword) const;
 
+    // 批量搜索文件方法
+    QVector<FileData> searchFilesBatch(const QString &keyword, int offset, int limit) const;
+    
+    // 获取搜索结果总数
+    int getSearchResultCount(const QString &keyword) const;
+
+    // 清空搜索结果和缓存
+    void clearSearchResults();
+    
+    // 取消当前搜索
+    void cancelSearch();
+
+signals:
+    // 搜索状态变化信号
+    void searchStatusChanged(SearchStatus status, const QString &message = QString());
+    // 搜索进度信号
+    void searchProgressUpdated(int current, int total);
+
 private slots:
     void onDirectoryChanged(const QString &path);
     void reindexFiles();
@@ -40,6 +66,7 @@ private:
     QString m_currentPath;
     QFileSystemWatcher m_fileWatcher;
     std::unique_ptr<ISearchEngine> m_searchEngine;
+    SearchStatus m_currentStatus;
 };
 
 #endif // SEARCHMANAGER_H 

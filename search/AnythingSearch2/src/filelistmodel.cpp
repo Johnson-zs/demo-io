@@ -4,6 +4,8 @@
 FileListModel::FileListModel(QObject *parent)
     : QAbstractListModel(parent)
 {
+    // 添加动态属性以传递关键词
+    setProperty("highlightKeyword", "");
 }
 
 int FileListModel::rowCount(const QModelIndex &parent) const
@@ -62,4 +64,22 @@ void FileListModel::setFileList(const QVector<FileData> &files)
     beginResetModel();
     m_files = files;
     endResetModel();
+}
+
+void FileListModel::appendFileList(const QVector<FileData> &files)
+{
+    if (files.isEmpty())
+        return;
+    
+    beginInsertRows(QModelIndex(), m_files.size(), m_files.size() + files.size() - 1);
+    m_files.append(files);
+    endInsertRows();
+}
+
+void FileListModel::setHighlightKeyword(const QString &keyword)
+{
+    m_highlightKeyword = keyword;
+    setProperty("highlightKeyword", keyword);
+    // 通知视图更新
+    emit dataChanged(index(0), index(rowCount() - 1));
 } 

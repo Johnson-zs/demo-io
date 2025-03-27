@@ -29,8 +29,15 @@ public:
     // 更新文件列表
     void setFileList(const QVector<FileData> &files);
     
+    // 追加文件列表
+    void appendFileList(const QVector<FileData> &files);
+    
+    // 设置关键词用于高亮
+    void setHighlightKeyword(const QString &keyword);
+
 private:
     QVector<FileData> m_files;
+    QString m_highlightKeyword;
 };
 
 #endif // FILELISTMODEL_H 

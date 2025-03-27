@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QtConcurrent/QtConcurrent>
+#include <QThreadPool>
 
 BasicSearchEngine::BasicSearchEngine()
 {
@@ -12,8 +13,8 @@ void BasicSearchEngine::updateSearchPath(const QString &path)
     m_currentPath = path;
     m_allFiles.clear();
     
-    // 开始索引文件
-    QtConcurrent::run([this]() {
+    // 修复警告：保存返回值或使用 QThreadPool
+    QThreadPool::globalInstance()->start([this]() {
         indexDirectory(m_currentPath);
     });
 }
@@ -64,4 +65,36 @@ QVector<FileData> BasicSearchEngine::searchFiles(const QString &keyword) const
     }
     
     return results;
+}
+
+void BasicSearchEngine::cancelSearch()
+{
+    // 基础搜索引擎不需要特殊处理
+}
+
+void BasicSearchEngine::clearCache()
+{
+    m_allFiles.clear();
+}
+
+QVector<FileData> BasicSearchEngine::searchFilesBatch(const QString &keyword, int offset, int limit) const
+{
+    // 先获取所有匹配结果
+    QVector<FileData> allResults = searchFiles(keyword);
+    
+    // 计算分页
+    int startIdx = qMin(offset, allResults.size());
+    int endIdx = qMin(offset + limit, allResults.size());
+    
+    // 返回指定范围的结果
+    if (startIdx >= endIdx) {
+        return QVector<FileData>();
+    }
+    
+    return QVector<FileData>(allResults.begin() + startIdx, allResults.begin() + endIdx);
+}
+
+int BasicSearchEngine::getSearchResultCount(const QString &keyword) const
+{
+    return searchFiles(keyword).size();
 } 

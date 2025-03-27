@@ -7,6 +7,7 @@
 using namespace Lucene;
 
 LuceneSearchEngine::LuceneSearchEngine()
+    : m_searchCancelled(false)
 {
 }
 
@@ -38,9 +39,11 @@ QString LuceneSearchEngine::getHomeDirectory() const
 
 QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, const QString &key, bool nrt) const
 {
+    // 在方法开始处重置取消标志
+    m_searchCancelled = false;
+    
     QString keywords = key;
     QString path = originPath;
-    
     if (path.startsWith(QDir::homePath()))
         path.replace(0, QDir::homePath().length(), getHomeDirectory());
 
@@ -48,20 +51,9 @@ QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, c
         return {};
     }
 
-    // 原始词条
-    String query_terms = StringUtils::toUnicode(keywords.toStdString());
-
-    // 给普通 parser 用
-    if (keywords.at(0) == QChar('*') || keywords.at(0) == QChar('?')) {
-        keywords = keywords.mid(1);
-    }
-
     try {
-        int32_t max_results;
-
         // 获取索引目录
         QString indexDir = getIndexDirectory();
-        qDebug() << "搜索索引目录:" << indexDir;
 
         // 打开索引目录
         FSDirectoryPtr directory = FSDirectory::open(StringUtils::toUnicode(indexDir.toStdString()));
@@ -81,19 +73,19 @@ QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, c
 
         // 创建搜索器
         SearcherPtr searcher = newLucene<IndexSearcher>(reader);
+        int32_t max_results = reader->numDocs();
 
-        if (reader->numDocs() == 0) {
-            qWarning() << "索引为空，没有文档";
-            return QStringList();
-        }
+        // 创建查询解析器
+        QueryParserPtr parser = newLucene<QueryParser>(LuceneVersion::LUCENE_CURRENT,
+                                                       L"file_name",
+                                                       newLucene<StandardAnalyzer>(LuceneVersion::LUCENE_CURRENT));
+        parser->setDefaultOperator(QueryParser::AND_OPERATOR);
 
-        max_results = reader->numDocs();
+        // 使用正确的方法调用
+        Lucene::QueryPtr query = buildSearchQuery(keywords);
 
-        String queryString = L"*" + StringUtils::toLower(StringUtils::toUnicode(keywords.toStdString())) + L"*";
-        TermPtr term = newLucene<Term>(L"file_name", queryString);
-        QueryPtr query = newLucene<WildcardQuery>(term);
-
-        auto search_results = searcher->search(query, max_results);
+        // 执行搜索
+        TopDocsPtr search_results = searcher->search(query, max_results);
 
         QStringList results;
         results.reserve(search_results->scoreDocs.size());
@@ -102,6 +94,11 @@ QStringList LuceneSearchEngine::performLuceneSearch(const QString &originPath, c
         files.reserve(search_results->scoreDocs.size() / 2);   // 预估文件数量
 
         for (const auto &score_doc : search_results->scoreDocs) {
+            // 检查是否取消搜索
+            if (m_searchCancelled) {
+                return {};
+            }
+
             DocumentPtr doc = searcher->doc(score_doc->doc);
             auto result = QString::fromStdWString(doc->get(L"full_path"));
 
@@ -133,14 +130,14 @@ QVector<FileData> LuceneSearchEngine::convertToFileData(const QStringList &paths
 {
     QVector<FileData> result;
     result.reserve(paths.size());
-    
+
     for (const QString &path : paths) {
         QFileInfo fileInfo(path);
         if (fileInfo.exists()) {
             result.append(FileData::fromFileInfo(fileInfo));
         }
     }
-    
+
     return result;
 }
 
@@ -152,20 +149,125 @@ QVector<FileData> LuceneSearchEngine::getAllFiles(int limit) const
         QStringList allPaths = performLuceneSearch(m_currentPath, "*", false);
         m_cachedAllFiles = convertToFileData(allPaths);
     }
-    
+
     if (limit < 0 || limit >= m_cachedAllFiles.size()) {
         return m_cachedAllFiles;
     }
-    
+
     return QVector<FileData>(m_cachedAllFiles.constBegin(), m_cachedAllFiles.constBegin() + limit);
 }
 
 QVector<FileData> LuceneSearchEngine::searchFiles(const QString &keyword) const
 {
+    m_searchCancelled = false;
     if (keyword.isEmpty()) {
-        return getAllFiles(1000);  // 限制返回数量以保证性能
+        return getAllFiles(1000);   // 限制返回数量以保证性能
     }
-    
+
     QStringList paths = performLuceneSearch(m_currentPath, keyword, false);
     return convertToFileData(paths);
-} 
+}
+
+void LuceneSearchEngine::cancelSearch()
+{
+    m_searchCancelled = true;
+}
+
+void LuceneSearchEngine::clearCache()
+{
+    m_cachedAllFiles.clear();
+}
+
+QVector<FileData> LuceneSearchEngine::searchFilesBatch(const QString &keyword, int offset, int limit) const
+{
+    // 确保重置取消标志
+    m_searchCancelled = false;
+    
+    // 获取所有匹配路径
+    QStringList allPaths = performLuceneSearch(m_currentPath, keyword, false);
+
+    // 计算分页
+    int startIdx = qMin(offset, allPaths.size());
+    int endIdx = qMin(offset + limit, allPaths.size());
+
+    // 提取当前页的路径
+    QStringList batchPaths;
+    for (int i = startIdx; i < endIdx; ++i) {
+        batchPaths.append(allPaths.at(i));
+    }
+
+    // 转换为FileData
+    return convertToFileData(batchPaths);
+}
+
+int LuceneSearchEngine::getSearchResultCount(const QString &keyword) const
+{
+    // 确保重置取消标志
+    m_searchCancelled = false;
+    
+    // 获取匹配数量
+    QStringList allPaths = performLuceneSearch(m_currentPath, keyword, false);
+    return allPaths.size();
+}
+
+LuceneSearchEngine::SearchType LuceneSearchEngine::determineSearchType(const QString &keyword) const
+{
+    // 如果包含空格，则为布尔搜索
+    if (keyword.contains(' ')) {
+        return SearchType::Boolean;
+    }
+
+    // 如果包含通配符
+    if (keyword.contains('*') || keyword.contains('?')) {
+        return SearchType::Wildcard;
+    }
+
+    // 默认为简单搜索
+    return SearchType::Simple;
+}
+
+Lucene::QueryPtr LuceneSearchEngine::buildSearchQuery(const QString &keyword) const
+{
+    // 星号表示全部匹配
+    if (keyword == "*") {
+        return newLucene<MatchAllDocsQuery>();
+    }
+
+    SearchType searchType = determineSearchType(keyword);
+
+    switch (searchType) {
+    case SearchType::Boolean: {
+        // 空格分隔的关键词，构建布尔查询
+        BooleanQueryPtr booleanQuery = newLucene<BooleanQuery>();
+        
+        // 分割关键词
+        QStringList terms = keyword.split(' ', Qt::SkipEmptyParts);
+        
+        for (const QString &term : terms) {
+            if (!term.isEmpty()) {
+                // 为每个关键词创建通配符查询
+                String termStr = L"*" + StringUtils::toLower(StringUtils::toUnicode(term.toStdString())) + L"*";
+                TermPtr termObj = newLucene<Term>(L"file_name", termStr);
+                QueryPtr termQuery = newLucene<WildcardQuery>(termObj);
+
+                // 添加到布尔查询(MUST表示AND关系)
+                booleanQuery->add(termQuery, BooleanClause::MUST);
+            }
+        }
+        
+        return booleanQuery;
+    }
+
+    case SearchType::Wildcard:
+        // 直接使用用户输入的通配符
+        return newLucene<WildcardQuery>(
+                newLucene<Term>(L"file_name",
+                                StringUtils::toLower(StringUtils::toUnicode(keyword.toStdString()))));
+
+    case SearchType::Simple:
+    default:
+        // 简单查询，加上前后通配符
+        String queryString = L"*" + StringUtils::toLower(StringUtils::toUnicode(keyword.toStdString())) + L"*";
+        return newLucene<WildcardQuery>(newLucene<Term>(L"file_name", queryString));
+    }
+}

@@ -12,6 +12,9 @@
 #include "filelistmodel.h"
 #include "fileitemdelegate.h"
 #include "searchmanager.h"
+#include <QScrollBar>
+#include <QStatusBar>
+#include <QLabel>
 
 class MainWindow : public QMainWindow
 {
@@ -25,9 +28,12 @@ private slots:
     void selectSearchPath();
     void onSearchTextChanged(const QString &text);
     void performSearch();
+    void onSearchStatusChanged(SearchManager::SearchStatus status, const QString &message);
 
 private:
     void setupUI();
+    void setupStatusBar();
+    void updateStatusBar(int count);
     
     QPushButton *m_pathButton;
     QLineEdit *m_searchLineEdit;
@@ -37,6 +43,14 @@ private:
     SearchManager *m_searchManager;
     QTimer *m_searchDebounceTimer;
     QString m_currentPath;
+    QString m_currentSearchKeyword;
+    int m_currentBatchSize;
+    int m_currentOffset;
+    QScrollBar *m_scrollBar;
+    QStatusBar *m_statusBar;
+    QLabel *m_statusLabel;
+    
+    void loadMoreResults();
 };
 
 #endif // MAINWINDOW_H 

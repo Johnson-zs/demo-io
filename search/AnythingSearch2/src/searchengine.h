@@ -19,6 +19,18 @@ public:
     
     // 获取所有文件
     virtual QVector<FileData> getAllFiles(int limit = -1) const = 0;
+    
+    // 取消当前搜索
+    virtual void cancelSearch() = 0;
+    
+    // 清空缓存
+    virtual void clearCache() = 0;
+    
+    // 批量搜索文件
+    virtual QVector<FileData> searchFilesBatch(const QString &keyword, int offset, int limit) const = 0;
+    
+    // 获取搜索结果总数
+    virtual int getSearchResultCount(const QString &keyword) const = 0;
 };
 
 #endif // SEARCHENGINE_H 
