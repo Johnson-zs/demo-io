@@ -166,20 +166,19 @@ void SearchManager::searchFilesAsync(const QString &keyword,
         return;
     }
     
+    // 取消之前的搜索
+    cancelSearch();
+    
     emit searchStatusChanged(Searching, "正在搜索...");
     
     // 记录搜索选项
     m_lastCaseSensitive = caseSensitive;
     m_lastFuzzySearch = fuzzySearch;
     
-    // 取消之前的搜索
-    if (m_searchFuture.isRunning()) {
-        m_searchEngine->cancelSearch();
-    }
-    
-    // 启动异步搜索
+    // 启动异步搜索 - 改为分批加载
     m_searchFuture = QtConcurrent::run([this, keyword, caseSensitive, fuzzySearch]() {
-        return m_searchEngine->searchFiles(keyword, caseSensitive, fuzzySearch);
+        // 先获取第一批结果，使UI能尽快显示
+        return m_searchEngine->searchFilesBatch(keyword, 0, m_firstBatchSize, caseSensitive, fuzzySearch);
     });
     
     m_searchWatcher.setFuture(m_searchFuture);

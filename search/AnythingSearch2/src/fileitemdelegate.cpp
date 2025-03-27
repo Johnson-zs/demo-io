@@ -14,6 +14,10 @@ FileItemDelegate::FileItemDelegate(QObject *parent)
 
 void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
+    // 优化绘制逻辑
+    if (!index.isValid())
+        return;
+        
     QStyleOptionViewItem opt = option;
     initStyleOption(&opt, index);
     
@@ -28,13 +32,16 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         painter->setPen(opt.palette.text().color());
     }
     
-    // 获取数据
+    // 获取数据 - 使用局部变量缓存，避免多次调用model方法
     QString name = index.data(FileListModel::NameRole).toString();
     QString path = index.data(FileListModel::PathRole).toString();
     QString type = index.data(FileListModel::TypeRole).toString();
     qint64 size = index.data(FileListModel::SizeRole).toLongLong();
     QDateTime modified = index.data(FileListModel::ModifiedRole).toDateTime();
     bool isDirectory = index.data(FileListModel::IsDirectoryRole).toBool();
+    
+    // 剪裁文本使其适合显示区域，避免不必要的绘制
+    QString displayName = painter->fontMetrics().elidedText(name, Qt::ElideMiddle, opt.rect.width() - 60);
     
     // 绘制图标
     QIcon icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
@@ -62,11 +69,11 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     
     // 绘制普通文本
     if (keyword.isEmpty()) {
-        painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
+        painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, displayName);
     } else {
         // 直接绘制高亮文本
         QStringList keywords = keyword.split(' ', Qt::SkipEmptyParts);
-        QString nameToDraw = name;
+        QString nameToDraw = displayName;
         
         // 计算每个关键词在文本中的位置
         QVector<QPair<int, int>> highlightPositions;

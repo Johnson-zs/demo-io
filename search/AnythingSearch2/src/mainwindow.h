@@ -31,6 +31,7 @@ private slots:
     void performSearch();
     void onSearchStatusChanged(SearchManager::SearchStatus status, const QString &message);
     void onSearchOptionChanged();
+    void onSearchResultsReady(const QVector<FileData> &results);
 
 private:
     void setupUI();
@@ -57,6 +58,7 @@ private:
     QHBoxLayout *m_searchOptionsLayout;
     
     void loadMoreResults();
+    bool m_isLoadingMore = false;
 };
 
 #endif // MAINWINDOW_H 

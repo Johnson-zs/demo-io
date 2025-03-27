@@ -2,6 +2,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QApplication>
+#include <QtConcurrent>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_currentPath(QDir::homePath()), m_currentBatchSize(100), m_currentOffset(0)
@@ -146,6 +147,9 @@ void MainWindow::onSearchTextChanged(const QString &text)
 
     // 重置防抖定时器
     m_searchDebounceTimer->start();
+    
+    // 添加进度提示，让用户知道将要开始搜索
+    m_statusLabel->setText("准备搜索...");
 }
 
 void MainWindow::onSearchOptionChanged()
@@ -158,23 +162,33 @@ void MainWindow::onSearchOptionChanged()
 
 void MainWindow::loadMoreResults()
 {
-    if (m_currentSearchKeyword.isEmpty()) {
+    if (m_currentSearchKeyword.isEmpty() || m_isLoadingMore) {
         return;
     }
 
+    // 设置加载状态，防止重复触发
+    m_isLoadingMore = true;
+    
     // 获取搜索选项
     bool caseSensitive = m_caseSensitiveCheckBox->isChecked();
     bool fuzzySearch = m_fuzzySearchCheckBox->isChecked();
 
-    m_currentOffset += m_currentBatchSize;
-    QVector<FileData> moreBatch = m_searchManager->searchFilesBatch(
-            m_currentSearchKeyword, m_currentOffset, m_currentBatchSize, 
-            caseSensitive, fuzzySearch);
-
-    if (!moreBatch.isEmpty()) {
-        // 追加到模型，而不是重置
-        m_fileModel->appendFileList(moreBatch);
-    }
+    // 使用异步加载，避免阻塞UI
+    QtConcurrent::run([this, caseSensitive, fuzzySearch]() {
+        m_currentOffset += m_currentBatchSize;
+        QVector<FileData> moreBatch = m_searchManager->searchFilesBatch(
+                m_currentSearchKeyword, m_currentOffset, m_currentBatchSize, 
+                caseSensitive, fuzzySearch);
+        
+        // 在主线程中更新UI
+        QMetaObject::invokeMethod(this, [this, moreBatch]() {
+            if (!moreBatch.isEmpty()) {
+                // 追加到模型，而不是重置
+                m_fileModel->appendFileList(moreBatch);
+            }
+            m_isLoadingMore = false;
+        }, Qt::QueuedConnection);
+    });
 }
 
 void MainWindow::performSearch()
@@ -192,14 +206,27 @@ void MainWindow::performSearch()
         m_searchManager->clearSearchResults();
         return;   // 状态已通过clearSearchResults更新
     } else {
-        // 获取第一批结果
-        QVector<FileData> firstBatch = m_searchManager->searchFilesBatch(
-                searchText, 0, m_currentBatchSize, caseSensitive, fuzzySearch);
-        m_fileModel->setFileList(firstBatch);
-
-        // 将关键词传递给模型用于高亮
-        m_fileModel->setHighlightKeyword(searchText);
+        // 使用异步搜索而不是直接获取结果
+        m_searchManager->searchFilesAsync(searchText, caseSensitive, fuzzySearch);
+        
+        // 更新UI，显示正在搜索的状态
+        m_statusLabel->setText("正在搜索...");
+        
+        // 连接异步搜索结果信号
+        connect(m_searchManager, &SearchManager::searchResultsReady, this, &MainWindow::onSearchResultsReady, Qt::UniqueConnection);
     }
+}
+
+void MainWindow::onSearchResultsReady(const QVector<FileData> &results)
+{
+    // 更新模型
+    m_fileModel->setFileList(results);
+    
+    // 将关键词传递给模型用于高亮
+    m_fileModel->setHighlightKeyword(m_currentSearchKeyword);
+    
+    // 更新状态栏
+    updateStatusBar(results.size());
 }
 
 void MainWindow::onSearchStatusChanged(SearchManager::SearchStatus status, const QString &message)

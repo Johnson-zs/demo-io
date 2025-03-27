@@ -181,17 +181,19 @@ QVector<FileData> LuceneSearchEngine::getAllFiles(int limit) const
     return QVector<FileData>(m_cachedAllFiles.constBegin(), m_cachedAllFiles.constBegin() + limit);
 }
 
-QVector<FileData> LuceneSearchEngine::searchFiles(const QString &keyword, 
+QVector<FileData> LuceneSearchEngine::searchFiles(const QString &keyword,
                                                 bool caseSensitive,
                                                 bool fuzzySearch) const
 {
+    // 这里设置一个标志，防止在执行过程中主线程阻塞
     m_searchCancelled = false;
-    if (keyword.isEmpty()) {
-        return getAllFiles(1000);   // 限制返回数量以保证性能
+    
+    try {
+        QStringList paths = performLuceneSearch(m_currentPath, keyword, false, caseSensitive, fuzzySearch);
+        return convertToFileData(paths);
+    } catch (...) {
+        return QVector<FileData>();
     }
-
-    QStringList paths = performLuceneSearch(m_currentPath, keyword, false, caseSensitive, fuzzySearch);
-    return convertToFileData(paths);
 }
 
 void LuceneSearchEngine::cancelSearch()
@@ -204,30 +206,34 @@ void LuceneSearchEngine::clearCache()
     m_cachedAllFiles.clear();
 }
 
-QVector<FileData> LuceneSearchEngine::searchFilesBatch(const QString &keyword, 
-                                                    int offset, 
-                                                    int limit,
-                                                    bool caseSensitive,
-                                                    bool fuzzySearch) const
+QVector<FileData> LuceneSearchEngine::searchFilesBatch(const QString &keyword,
+                                                     int offset,
+                                                     int limit,
+                                                     bool caseSensitive,
+                                                     bool fuzzySearch) const
 {
-    // 确保重置取消标志
-    m_searchCancelled = false;
-    
-    // 获取所有匹配路径
-    QStringList allPaths = performLuceneSearch(m_currentPath, keyword, false, caseSensitive, fuzzySearch);
-
-    // 计算分页
-    int startIdx = qMin(offset, allPaths.size());
-    int endIdx = qMin(offset + limit, allPaths.size());
-
-    // 提取当前页的路径
-    QStringList batchPaths;
-    for (int i = startIdx; i < endIdx; ++i) {
-        batchPaths.append(allPaths.at(i));
+    if (keyword.isEmpty() || limit <= 0) {
+        return QVector<FileData>();
     }
 
-    // 转换为FileData
-    return convertToFileData(batchPaths);
+    try {
+        // 获取搜索结果
+        QStringList allPaths = performLuceneSearch(m_currentPath, keyword, false, caseSensitive, fuzzySearch);
+        
+        // 计算分页
+        int startIdx = qMin(offset, allPaths.size());
+        int endIdx = qMin(offset + limit, allPaths.size());
+        
+        if (startIdx >= endIdx) {
+            return QVector<FileData>();
+        }
+        
+        // 只转换需要的部分
+        QStringList batchPaths = allPaths.mid(startIdx, endIdx - startIdx);
+        return convertToFileData(batchPaths);
+    } catch (...) {
+        return QVector<FileData>();
+    }
 }
 
 int LuceneSearchEngine::getSearchResultCount(const QString &keyword,
