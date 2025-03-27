@@ -39,14 +39,22 @@ public:
     // 获取所有文件（数量限制）
     QVector<FileData> getAllFiles(int limit = -1) const;
     
-    // 搜索文件
-    QVector<FileData> searchFiles(const QString &keyword) const;
+    // 搜索文件，增加大小写敏感和模糊搜索参数
+    QVector<FileData> searchFiles(const QString &keyword, 
+                                bool caseSensitive = false,
+                                bool fuzzySearch = false) const;
 
-    // 批量搜索文件方法
-    QVector<FileData> searchFilesBatch(const QString &keyword, int offset, int limit) const;
+    // 批量搜索文件方法，增加大小写敏感和模糊搜索参数
+    QVector<FileData> searchFilesBatch(const QString &keyword, 
+                                     int offset, 
+                                     int limit,
+                                     bool caseSensitive = false,
+                                     bool fuzzySearch = false) const;
     
-    // 获取搜索结果总数
-    int getSearchResultCount(const QString &keyword) const;
+    // 获取搜索结果总数，增加大小写敏感和模糊搜索参数
+    int getSearchResultCount(const QString &keyword,
+                            bool caseSensitive = false,
+                            bool fuzzySearch = false) const;
 
     // 清空搜索结果和缓存
     void clearSearchResults();
@@ -54,8 +62,10 @@ public:
     // 取消当前搜索
     void cancelSearch();
 
-    // 异步搜索方法
-    void searchFilesAsync(const QString &keyword);
+    // 异步搜索方法，增加大小写敏感和模糊搜索参数
+    void searchFilesAsync(const QString &keyword,
+                         bool caseSensitive = false,
+                         bool fuzzySearch = false);
 
 signals:
     // 搜索状态变化信号
@@ -79,6 +89,10 @@ private:
     // 异步搜索结果
     mutable QFuture<QVector<FileData>> m_searchFuture;
     mutable QFutureWatcher<QVector<FileData>> m_searchWatcher;
+    
+    // 保存搜索选项
+    mutable bool m_lastCaseSensitive;
+    mutable bool m_lastFuzzySearch;
 };
 
 #endif // SEARCHMANAGER_H 

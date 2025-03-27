@@ -15,6 +15,7 @@
 #include <QScrollBar>
 #include <QStatusBar>
 #include <QLabel>
+#include <QCheckBox>
 
 class MainWindow : public QMainWindow
 {
@@ -29,6 +30,7 @@ private slots:
     void onSearchTextChanged(const QString &text);
     void performSearch();
     void onSearchStatusChanged(SearchManager::SearchStatus status, const QString &message);
+    void onSearchOptionChanged();
 
 private:
     void setupUI();
@@ -49,6 +51,10 @@ private:
     QScrollBar *m_scrollBar;
     QStatusBar *m_statusBar;
     QLabel *m_statusLabel;
+    
+    QCheckBox *m_caseSensitiveCheckBox;
+    QCheckBox *m_fuzzySearchCheckBox;
+    QHBoxLayout *m_searchOptionsLayout;
     
     void loadMoreResults();
 };

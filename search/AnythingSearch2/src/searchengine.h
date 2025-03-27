@@ -15,7 +15,9 @@ public:
     virtual void updateSearchPath(const QString &path) = 0;
     
     // 搜索文件
-    virtual QVector<FileData> searchFiles(const QString &keyword) const = 0;
+    virtual QVector<FileData> searchFiles(const QString &keyword, 
+                                        bool caseSensitive = false,
+                                        bool fuzzySearch = false) const = 0;
     
     // 获取所有文件
     virtual QVector<FileData> getAllFiles(int limit = -1) const = 0;
@@ -27,10 +29,16 @@ public:
     virtual void clearCache() = 0;
     
     // 批量搜索文件
-    virtual QVector<FileData> searchFilesBatch(const QString &keyword, int offset, int limit) const = 0;
+    virtual QVector<FileData> searchFilesBatch(const QString &keyword, 
+                                             int offset, 
+                                             int limit,
+                                             bool caseSensitive = false,
+                                             bool fuzzySearch = false) const = 0;
     
     // 获取搜索结果总数
-    virtual int getSearchResultCount(const QString &keyword) const = 0;
+    virtual int getSearchResultCount(const QString &keyword,
+                                    bool caseSensitive = false,
+                                    bool fuzzySearch = false) const = 0;
 };
 
 #endif // SEARCHENGINE_H 

@@ -9,6 +9,8 @@
 SearchManager::SearchManager(QObject *parent)
     : QObject(parent)
     , m_currentStatus(Idle)
+    , m_lastCaseSensitive(false)
+    , m_lastFuzzySearch(false)
 {
     // 默认使用Lucene搜索引擎，因为已经添加了依赖
     m_searchEngine = std::make_unique<LuceneSearchEngine>();
@@ -67,7 +69,9 @@ QVector<FileData> SearchManager::getAllFiles(int limit) const
     return m_searchEngine->getAllFiles(limit);
 }
 
-QVector<FileData> SearchManager::searchFiles(const QString &keyword) const
+QVector<FileData> SearchManager::searchFiles(const QString &keyword, 
+                                           bool caseSensitive,
+                                           bool fuzzySearch) const
 {
     if (keyword.isEmpty()) {
         emit const_cast<SearchManager*>(this)->searchStatusChanged(Idle, "搜索已取消");
@@ -76,7 +80,10 @@ QVector<FileData> SearchManager::searchFiles(const QString &keyword) const
     
     emit const_cast<SearchManager*>(this)->searchStatusChanged(Searching, "正在搜索...");
     
-    QVector<FileData> results = m_searchEngine->searchFiles(keyword);
+    m_lastCaseSensitive = caseSensitive;
+    m_lastFuzzySearch = fuzzySearch;
+    
+    QVector<FileData> results = m_searchEngine->searchFiles(keyword, caseSensitive, fuzzySearch);
     
     QString statusMessage = QString("找到 %1 个文件").arg(results.size());
     emit const_cast<SearchManager*>(this)->searchStatusChanged(Completed, statusMessage);
@@ -84,7 +91,11 @@ QVector<FileData> SearchManager::searchFiles(const QString &keyword) const
     return results;
 }
 
-QVector<FileData> SearchManager::searchFilesBatch(const QString &keyword, int offset, int limit) const
+QVector<FileData> SearchManager::searchFilesBatch(const QString &keyword, 
+                                               int offset, 
+                                               int limit,
+                                               bool caseSensitive,
+                                               bool fuzzySearch) const
 {
     if (keyword.isEmpty()) {
         return QVector<FileData>();
@@ -92,13 +103,16 @@ QVector<FileData> SearchManager::searchFilesBatch(const QString &keyword, int of
     
     if (offset == 0) { // 首次搜索
         emit const_cast<SearchManager*>(this)->searchStatusChanged(Searching, "正在搜索...");
+        m_lastCaseSensitive = caseSensitive;
+        m_lastFuzzySearch = fuzzySearch;
     }
     
-    QVector<FileData> results = m_searchEngine->searchFilesBatch(keyword, offset, limit);
+    QVector<FileData> results = m_searchEngine->searchFilesBatch(
+        keyword, offset, limit, caseSensitive, fuzzySearch);
     
     if (offset == 0) { // 只在首次搜索完成时更新状态
         // 注意：这里直接使用cached结果的数量，避免重复搜索
-        int total = m_searchEngine->getSearchResultCount(keyword);
+        int total = m_searchEngine->getSearchResultCount(keyword, caseSensitive, fuzzySearch);
         QString statusMessage = QString("找到 %1 个文件").arg(total);
         emit const_cast<SearchManager*>(this)->searchStatusChanged(Completed, statusMessage);
     }
@@ -106,9 +120,11 @@ QVector<FileData> SearchManager::searchFilesBatch(const QString &keyword, int of
     return results;
 }
 
-int SearchManager::getSearchResultCount(const QString &keyword) const
+int SearchManager::getSearchResultCount(const QString &keyword,
+                                      bool caseSensitive,
+                                      bool fuzzySearch) const
 {
-    return m_searchEngine->getSearchResultCount(keyword);
+    return m_searchEngine->getSearchResultCount(keyword, caseSensitive, fuzzySearch);
 }
 
 void SearchManager::onDirectoryChanged(const QString &path)
@@ -140,7 +156,9 @@ void SearchManager::cancelSearch()
     emit searchStatusChanged(Idle, "搜索已取消");
 }
 
-void SearchManager::searchFilesAsync(const QString &keyword)
+void SearchManager::searchFilesAsync(const QString &keyword,
+                                   bool caseSensitive,
+                                   bool fuzzySearch)
 {
     if (keyword.isEmpty()) {
         emit searchStatusChanged(Idle, "搜索已取消");
@@ -150,14 +168,18 @@ void SearchManager::searchFilesAsync(const QString &keyword)
     
     emit searchStatusChanged(Searching, "正在搜索...");
     
+    // 记录搜索选项
+    m_lastCaseSensitive = caseSensitive;
+    m_lastFuzzySearch = fuzzySearch;
+    
     // 取消之前的搜索
     if (m_searchFuture.isRunning()) {
         m_searchEngine->cancelSearch();
     }
     
     // 启动异步搜索
-    m_searchFuture = QtConcurrent::run([this, keyword]() {
-        return m_searchEngine->searchFiles(keyword);
+    m_searchFuture = QtConcurrent::run([this, keyword, caseSensitive, fuzzySearch]() {
+        return m_searchEngine->searchFiles(keyword, caseSensitive, fuzzySearch);
     });
     
     m_searchWatcher.setFuture(m_searchFuture);

@@ -16,6 +16,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_searchDebounceTimer, &QTimer::timeout, this, &MainWindow::performSearch);
     connect(m_pathButton, &QPushButton::clicked, this, &MainWindow::selectSearchPath);
     connect(m_searchLineEdit, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
+    
+    // 连接搜索选项改变信号
+    connect(m_caseSensitiveCheckBox, &QCheckBox::stateChanged, this, &MainWindow::onSearchOptionChanged);
+    connect(m_fuzzySearchCheckBox, &QCheckBox::stateChanged, this, &MainWindow::onSearchOptionChanged);
 
     // 设置路径按钮文本
     m_pathButton->setText(QString("搜索路径: %1").arg(m_currentPath));
@@ -58,6 +62,19 @@ void MainWindow::setupUI()
     m_searchLineEdit = new QLineEdit(this);
     m_searchLineEdit->setPlaceholderText("输入关键词搜索文件...");
     m_searchLineEdit->setClearButtonEnabled(true);
+    
+    // 创建搜索选项
+    m_searchOptionsLayout = new QHBoxLayout();
+    m_caseSensitiveCheckBox = new QCheckBox("区分大小写", this);
+    m_fuzzySearchCheckBox = new QCheckBox("模糊搜索", this);
+    
+    // 添加工具提示
+    m_caseSensitiveCheckBox->setToolTip("启用大小写敏感搜索");
+    m_fuzzySearchCheckBox->setToolTip("启用模糊匹配，可以找到拼写相近的文件");
+    
+    m_searchOptionsLayout->addWidget(m_caseSensitiveCheckBox);
+    m_searchOptionsLayout->addWidget(m_fuzzySearchCheckBox);
+    m_searchOptionsLayout->addStretch(); // 添加弹性空间
 
     // 创建文件列表视图
     m_fileListView = new QListView(this);
@@ -75,6 +92,7 @@ void MainWindow::setupUI()
     // 添加组件到布局
     mainLayout->addWidget(m_pathButton);
     mainLayout->addWidget(m_searchLineEdit);
+    mainLayout->addLayout(m_searchOptionsLayout);
     mainLayout->addWidget(m_fileListView, 1);
 
     setCentralWidget(centralWidget);
@@ -130,15 +148,28 @@ void MainWindow::onSearchTextChanged(const QString &text)
     m_searchDebounceTimer->start();
 }
 
+void MainWindow::onSearchOptionChanged()
+{
+    // 如果有搜索文本，则触发新的搜索
+    if (!m_searchLineEdit->text().isEmpty()) {
+        m_searchDebounceTimer->start(); // 重新启动防抖定时器触发搜索
+    }
+}
+
 void MainWindow::loadMoreResults()
 {
     if (m_currentSearchKeyword.isEmpty()) {
         return;
     }
 
+    // 获取搜索选项
+    bool caseSensitive = m_caseSensitiveCheckBox->isChecked();
+    bool fuzzySearch = m_fuzzySearchCheckBox->isChecked();
+
     m_currentOffset += m_currentBatchSize;
     QVector<FileData> moreBatch = m_searchManager->searchFilesBatch(
-            m_currentSearchKeyword, m_currentOffset, m_currentBatchSize);
+            m_currentSearchKeyword, m_currentOffset, m_currentBatchSize, 
+            caseSensitive, fuzzySearch);
 
     if (!moreBatch.isEmpty()) {
         // 追加到模型，而不是重置
@@ -152,6 +183,10 @@ void MainWindow::performSearch()
     m_currentSearchKeyword = searchText;
     m_currentOffset = 0;
 
+    // 获取搜索选项
+    bool caseSensitive = m_caseSensitiveCheckBox->isChecked();
+    bool fuzzySearch = m_fuzzySearchCheckBox->isChecked();
+
     if (searchText.isEmpty()) {
         m_fileModel->setFileList(QVector<FileData>());
         m_searchManager->clearSearchResults();
@@ -159,7 +194,7 @@ void MainWindow::performSearch()
     } else {
         // 获取第一批结果
         QVector<FileData> firstBatch = m_searchManager->searchFilesBatch(
-                searchText, 0, m_currentBatchSize);
+                searchText, 0, m_currentBatchSize, caseSensitive, fuzzySearch);
         m_fileModel->setFileList(firstBatch);
 
         // 将关键词传递给模型用于高亮
