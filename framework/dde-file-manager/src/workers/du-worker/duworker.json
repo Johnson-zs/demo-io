@@ -1,0 +1,9 @@
+{
+    "Name": "DiskUsage",
+    "Version": "1.0",
+    "Description": "Worker plugin for calculating disk usage",
+    "Schemes": ["file"],
+    "Capabilities": ["get", "stat", "execute"],
+    "Author": "Deepin File Manager Team",
+    "AuthorEmail": "dev@deepin.org"
+} 

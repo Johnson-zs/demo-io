@@ -1,0 +1,33 @@
+set(LIB_NAME dde-file-manager-core)
+
+# 使用 GLOB_RECURSE 递归搜索所有源文件
+file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+file(GLOB_RECURSE HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
+
+# 创建库
+add_library(${LIB_NAME} SHARED ${SOURCES} ${HEADERS})
+
+# 设置库的属性
+set_target_properties(${LIB_NAME} PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    PUBLIC_HEADER "${HEADERS}"
+)
+
+# 链接 Qt 库
+target_link_libraries(${LIB_NAME} PRIVATE
+    Qt6::Core
+    Qt6::Network
+)
+
+# 包含目录
+target_include_directories(${LIB_NAME} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/${LIB_NAME}>
+)
+
+# 安装规则
+install(TARGETS ${LIB_NAME}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${LIB_NAME}
+) 
