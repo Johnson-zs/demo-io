@@ -1,0 +1,17 @@
+{
+    "name": "ImageProcessor",
+    "version": "1.0.0",
+    "description": "图像处理工作器插件",
+    "author": "示例框架团队",
+    "capabilities": ["ImageProcessing"],
+    "parameters": {
+        "ImageProcessing": {
+            "input_file": "输入图像文件路径",
+            "output_file": "输出图像文件路径",
+            "operation": "操作类型（resize、crop、blur、sharpen等）",
+            "width": "目标宽度（可选）",
+            "height": "目标高度（可选）",
+            "quality": "输出质量（1-100，可选）"
+        }
+    }
+} 

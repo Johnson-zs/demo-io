@@ -1,0 +1,10 @@
+{
+    "Name": "ImageProcessor",
+    "Version": "1.0.0",
+    "CompatVersion": "1.0.0",
+    "Description": "Image processing plugin",
+    "Vendor": "Example Organization",
+    "Copyright": "(C) 2023 Example Organization",
+    "License": "MIT",
+    "Category": "Image Processing"
+} 
