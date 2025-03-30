@@ -1,0 +1,10 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>icons/search.png</file>
+        <file>icons/folder.png</file>
+        <file>icons/file.png</file>
+        <file>icons/document.png</file>
+        <file>icons/app.png</file>
+    </qresource>
+</RCC> 
