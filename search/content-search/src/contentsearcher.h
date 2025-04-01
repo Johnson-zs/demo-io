@@ -4,6 +4,7 @@
 #include <QString>
 #include <QList>
 #include <QDebug>
+#include <QDir>
 
 #include <lucene++/LuceneHeaders.h>
 #include <lucene++/QueryParser.h>
@@ -24,10 +25,13 @@ public:
     ContentSearcher(const QString &indexPath);
     ~ContentSearcher();
 
-    QList<SearchResult> search(const QString &keyword, int maxResults = 10, const QString &searchPath = QString());
+    QList<SearchResult> search(const QString &keyword, int maxResults = 100000, const QString &searchPath = QDir::homePath());
 
 private:
     QString getHighlightedContent(const DocumentPtr &doc, const QueryPtr &query);
+
+    // 合并相邻的高亮标签
+    QString mergeAdjacentHighlightTags(const QString &text);
 
     IndexReaderPtr reader;
     IndexSearcherPtr searcher;

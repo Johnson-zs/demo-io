@@ -8,13 +8,13 @@
 #include <SimpleHTMLFormatter.h>
 #include <SimpleFragmenter.h>
 #include <QueryScorer.h>
+#include <QueryWrapperFilter.h>
 
 ContentSearcher::ContentSearcher(const QString &indexPath)
 {
     try {
         // 打开索引
-        DirectoryPtr indexDir = FSDirectory::open(indexPath.toStdWString());
-        reader = IndexReader::open(indexDir);
+        reader = IndexReader::open(FSDirectory::open(indexPath.toStdWString()), true);
         searcher = newLucene<IndexSearcher>(reader);
         analyzer = newLucene<ChineseAnalyzer>();
     } catch (const LuceneException &e) {
@@ -39,25 +39,15 @@ QList<SearchResult> ContentSearcher::search(const QString &keyword, int maxResul
                 L"contents",
                 analyzer);
 
+        parser->setAllowLeadingWildcard(true);
+
         // 解析查询
-        QueryPtr contentQuery = parser->parse(keyword.toStdWString());
-        QueryPtr finalQuery = contentQuery;
+        QueryPtr query = parser->parse(keyword.toStdWString());
+        String filterPath = searchPath.endsWith("/") ? (searchPath + "*").toStdWString() : (searchPath + "/*").toStdWString();
+        FilterPtr filter = newLucene<QueryWrapperFilter>(newLucene<WildcardQuery>(newLucene<Term>(L"path", filterPath)));
 
-        // 如果指定了搜索路径，创建布尔查询限制路径
-        if (!searchPath.isEmpty()) {
-            String filterPath = searchPath.endsWith("/") ? (searchPath + "*").toStdWString() : (searchPath + "/*").toStdWString();
-            WildcardQueryPtr pathQuery = newLucene<WildcardQuery>(newLucene<Term>(L"path", filterPath));
-            
-            // 创建布尔查询，将内容查询和路径查询组合起来
-            BooleanQueryPtr booleanQuery = newLucene<BooleanQuery>();
-            booleanQuery->add(contentQuery, BooleanClause::MUST);
-            booleanQuery->add(pathQuery, BooleanClause::MUST);
-            
-            finalQuery = booleanQuery;
-        }
-
-        // 执行查询
-        TopDocsPtr topDocs = searcher->search(finalQuery, maxResults);
+        // 执行带过滤器的搜索
+        TopDocsPtr topDocs = searcher->search(query, filter, maxResults);
         Collection<ScoreDocPtr> scoreDocs = topDocs->scoreDocs;
 
         // 处理搜索结果
@@ -68,7 +58,7 @@ QList<SearchResult> ContentSearcher::search(const QString &keyword, int maxResul
             SearchResult result;
             result.path = QString::fromStdWString(doc->get(L"path"));
             result.modifiedTime = QString::fromStdWString(doc->get(L"modified"));
-            result.highlightedContent = getHighlightedContent(doc, contentQuery);
+            result.highlightedContent = getHighlightedContent(doc, query);
 
             results.append(result);
         }
@@ -120,9 +110,31 @@ QString ContentSearcher::getHighlightedContent(const DocumentPtr &doc, const Que
             }
         }
 
+        // 处理连续的高亮标签，将它们合并
+        result = mergeAdjacentHighlightTags(result);
+
         return result;
     } catch (const LuceneException &e) {
         qCritical() << "Highlighting failed:" << QString::fromStdWString(e.getError());
         return QStringLiteral("(Error highlighting content)");
     }
+}
+
+QString ContentSearcher::mergeAdjacentHighlightTags(const QString &text)
+{
+    // 使用正则表达式搜索和替换相邻的高亮标签
+    QString result = text;
+
+    // 替换模式：</b><b style="color:red;"> 将被删除，从而合并相邻的标签
+    static const QString pattern = QLatin1String("</b><b style=\"color:red;\">");
+    static const QString replacement = QLatin1String("");
+
+    // 循环替换直到不再有变化（处理连续多个标签的情况）
+    QString previousResult;
+    do {
+        previousResult = result;
+        result = result.replace(pattern, replacement);
+    } while (result != previousResult);
+
+    return result;
 }

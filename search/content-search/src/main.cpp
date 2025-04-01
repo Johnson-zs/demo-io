@@ -32,9 +32,9 @@ int main(int argc, char *argv[])
     QCommandLineOption maxResultsOption(
             QStringList() << "m"
                           << "max-results",
-            "Maximum number of results to display (default: 10)",
+            "Maximum number of results to display (default: 100000)",
             "number",
-            "10");
+            "100000");
     parser.addOption(maxResultsOption);
 
     // Process the arguments
