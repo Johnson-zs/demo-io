@@ -36,13 +36,23 @@ private:
     QString getHighlightedContent(const DocumentPtr &doc, const QueryPtr &query);
     
     // 搜索引擎风格的内容展示
-    QString getSearchEngineStyleContent(const String &content, const QueryPtr &query, int maxLength = 50);
+    QString getSearchEngineStyleContent(const String &content, const QueryPtr &query, 
+                                      int maxLength = 50, const QString &originalKeyword = QString());
     
     // 合并相邻的高亮标签
     QString mergeAdjacentHighlightTags(const QString &text);
     
     // 根据文档特性确定截断长度
     int determineContentLength(const String &content);
+
+    // 添加新方法
+    QString customHighlight(const String &content, const QueryPtr &query, 
+                          int maxLength, const QString &originalKeyword = QString());
+    QStringList extractKeywords(const QueryPtr &query);
+
+    // 新增辅助方法
+    QString highlightKeywordInContext(const QString &content, const QString &keyword, 
+                                    int matchPos, int maxLength);
 
     IndexReaderPtr reader;
     IndexSearcherPtr searcher;
