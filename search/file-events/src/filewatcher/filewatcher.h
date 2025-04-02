@@ -5,6 +5,7 @@
 #include <QString>
 #include <QDir>
 #include <QHash>
+#include <QRegularExpression>
 
 #include "eventlistener.h"
 #include "utils/fsevents.h"
@@ -50,10 +51,18 @@ private:
     // Helper to check if path is inside watched directory
     bool isInWatchPath(const QString& path) const;
     
+    QString normalizeOverlayPath(const QString& overlayPath) const;
+    void updateOverlayInfo();
+    
 private:
     EventListener* eventListener_;
     QString watchPath_;
     QHash<uint32_t, QString> renameFromEvents_; // 用于处理重命名事件
+    
+    // 存储overlay挂载信息
+    QString overlayUpperDir_;   // upperdir路径
+    QString overlayLowerDir_;   // lowerdir路径
+    bool isOverlayFs_;          // 是否使用overlay文件系统
 };
 
 #endif // FILEWATCHER_H 
