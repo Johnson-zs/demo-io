@@ -25,6 +25,7 @@ public:
     bool includeHidden;
     int maxResults;
     QVariantMap customOptions;
+    bool recursive = true; // 默认递归搜索
 };
 
 }  // namespace Search

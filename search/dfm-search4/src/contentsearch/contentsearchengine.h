@@ -52,6 +52,7 @@ private:
 
     std::unique_ptr<ContentSearcher> m_searcher;
     ContentSearchOptions m_options;
+    SearchQuery m_currentQuery; // 当前查询
 };
 
 }   // namespace Search

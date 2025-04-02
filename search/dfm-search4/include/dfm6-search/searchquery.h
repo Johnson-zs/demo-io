@@ -125,16 +125,6 @@ public:
     void clearSubQueries();
     
     /**
-     * @brief 是否启用拼音搜索
-     */
-    bool pinyinEnabled() const;
-    
-    /**
-     * @brief 设置是否启用拼音搜索
-     */
-    void setPinyinEnabled(bool enabled);
-    
-    /**
      * @brief 创建简单查询
      */
     static SearchQuery createSimpleQuery(const QString &keyword);

@@ -2,6 +2,7 @@
 #include <QtConcurrent>
 #include <QFileInfo>
 #include <QDebug>
+#include <QDirIterator>
 
 // 前向声明的类型定义，实际项目中可能需要替换为真实的结构
 class LuceneSearchEngine;
@@ -32,21 +33,16 @@ SearchOptions FileNameSearchEngine::searchOptions() const
 
 void FileNameSearchEngine::setSearchOptions(const SearchOptions &options)
 {
-    // 尝试将基类选项转换为 FileNameSearchOptions
-    try {
-        const FileNameSearchOptions* fileNameOptions = dynamic_cast<const FileNameSearchOptions*>(&options);
-        if (fileNameOptions) {
-            m_options = *fileNameOptions;
-        } else {
-            m_options = FileNameSearchOptions(options);
-        }
-    } catch (const std::exception& e) {
-        qWarning() << "Failed to convert search options:" << e.what();
-        m_options = FileNameSearchOptions(options);
-    }
+    // 不再需要转换类型
+    m_options = options;
     
     // 配置底层引擎
     if (m_engine) {
+        // 直接使用基类接口
+        bool pinyinEnabled = options.pinyinEnabled();
+        bool fuzzySearch = options.fuzzySearch();
+        QStringList fileTypes = options.fileTypes();
+        
         // TODO: 配置 m_engine 的选项
     }
 }
@@ -90,31 +86,61 @@ QFuture<void> FileNameSearchEngine::searchWithCallback(const SearchQuery &query,
     emit searchStarted();
     
     return QtConcurrent::run([this, query, callback]() {
-        // 假设这是一个虚拟实现，实际项目中应使用真实的搜索功能
-        QList<SearchResult> results = searchSync(query);
+        const SearchMethod method = m_options.method();
         
-        for (const auto &result : results) {
-            if (m_cancelled.load()) {
-                break;
+        if (method == SearchMethod::Realtime) {
+            // 实时搜索实现
+            QDir dir(m_options.searchPath());
+            QStringList filters = m_options.fileTypes();
+            QDirIterator::IteratorFlags flags = m_options.isRecursive() ? 
+                QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags;
+            
+            QDirIterator it(dir.path(), filters, QDir::Files | QDir::NoDotAndDotDot, flags);
+            int count = 0;
+            
+            while (it.hasNext() && !m_cancelled.load()) {
+                // 暂停处理
+                processPauseIfNeeded();
+                
+                QString filePath = it.next();
+                QFileInfo info(filePath);
+                
+                // 检查是否符合搜索条件
+                if (matchesQuery(info, query)) {
+                    count++;
+                    SearchResult result(filePath);
+                    result.setSize(info.size());
+                    result.setModifiedTime(info.lastModified());
+                    result.setIsDirectory(info.isDir());
+                    
+                    // 立即回调返回结果
+                    if (callback) {
+                        callback(result);
+                    }
+                    
+                    emit resultFound(result);
+                }
+                
+                // 每处理10个文件报告一次进度
+                if (count % 10 == 0) {
+                    emit progressChanged(count, -1); // -1表示总数未知
+                }
             }
             
-            // 暂停处理
-            m_mutex.lock();
-            if (m_status.load() == SearchStatus::Paused) {
-                m_pauseCondition.wait(&m_mutex);
+            // 搜索完成
+            if (!m_cancelled.load()) {
+                setStatus(SearchStatus::Finished);
+                QList<SearchResult> emptyList; // 实时模式下不积累结果
+                emit searchFinished(emptyList);
             }
-            m_mutex.unlock();
+        } else {
+            // 索引搜索实现（保持原有代码）
+            QList<SearchResult> results = searchSync(query);
             
-            if (callback) {
-                callback(result);
+            if (!m_cancelled.load()) {
+                setStatus(SearchStatus::Finished);
+                emit searchFinished(results);
             }
-            
-            emit resultFound(result);
-        }
-        
-        if (!m_cancelled.load()) {
-            setStatus(SearchStatus::Finished);
-            emit searchFinished(results);
         }
     });
 }
@@ -130,6 +156,17 @@ QList<SearchResult> FileNameSearchEngine::searchSync(const SearchQuery &query)
     
     try {
         QString queryStr = convertQuery(query);
+        
+        // 获取文件类型过滤器
+        QStringList fileTypes = m_options.fileTypes();
+        bool hasKeyword = !query.keyword().isEmpty() && query.keyword() != "*";
+        bool hasFileTypes = !fileTypes.isEmpty();
+
+        // 如果只有文件类型没有关键词，使用特殊的搜索逻辑
+        if (hasFileTypes && !hasKeyword) {
+            // 按类型搜索代码
+            // ...
+        }
         
         // 假设的搜索结果
         QVector<FileData> fakeResults;

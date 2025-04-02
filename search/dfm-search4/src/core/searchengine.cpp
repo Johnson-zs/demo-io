@@ -143,5 +143,17 @@ void SearchEngine::clearCache()
     }
 }
 
+FileNameSearchAPI SearchEngine::fileNameOptions()
+{
+    SearchOptions& options = searchOptions();
+    return FileNameSearchAPI(options);
+}
+
+ContentSearchAPI SearchEngine::contentOptions()
+{
+    SearchOptions& options = searchOptions();
+    return ContentSearchAPI(options);
+}
+
 }  // namespace Search
 }  // namespace DFM6 

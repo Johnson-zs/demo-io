@@ -42,7 +42,7 @@ SearchMethod SearchOptions::method() const
     return d->method;
 }
 
-void SearchOptions::setMethod(SearchMethod method)
+void SearchOptions::setSearchMethod(SearchMethod method)
 {
     d->method = method;
 }
@@ -137,6 +137,56 @@ SearchOptionsData* SearchOptions::data()
 const SearchOptionsData* SearchOptions::data() const
 {
     return d.get();
+}
+
+void SearchOptions::setRecursive(bool recursive)
+{
+    d->recursive = recursive;
+}
+
+bool SearchOptions::isRecursive() const
+{
+    return d->recursive;
+}
+
+void SearchOptions::setPinyinEnabled(bool enabled)
+{
+    setCustomOption("pinyinEnabled", enabled);
+}
+
+bool SearchOptions::pinyinEnabled() const
+{
+    return customOption("pinyinEnabled").toBool();
+}
+
+void SearchOptions::setFuzzySearch(bool enabled)
+{
+    setCustomOption("fuzzySearch", enabled);
+}
+
+bool SearchOptions::fuzzySearch() const
+{
+    return customOption("fuzzySearch").toBool();
+}
+
+void SearchOptions::setFileTypes(const QStringList &types)
+{
+    setCustomOption("fileTypes", types);
+}
+
+QStringList SearchOptions::fileTypes() const
+{
+    return customOption("fileTypes").toStringList();
+}
+
+void SearchOptions::setFileTypeFilters(const QStringList &extensions)
+{
+    setCustomOption("fileTypeFilters", extensions);
+}
+
+QStringList SearchOptions::fileTypeFilters() const
+{
+    return customOption("fileTypeFilters").toStringList();
 }
 
 }  // namespace Search

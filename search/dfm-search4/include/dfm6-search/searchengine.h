@@ -5,6 +5,8 @@
 #include <dfm6-search/searchoptions.h>
 #include <dfm6-search/searchquery.h>
 #include <dfm6-search/searchresult.h>
+#include <dfm6-search/filenamesearchapi.h>
+#include <dfm6-search/contentsearchapi.h>
 
 #include <QObject>
 #include <QString>
@@ -32,6 +34,18 @@ public:
      * @brief 搜索结果回调函数类型
      */
     using ResultCallback = std::function<void(const SearchResult&)>;
+    
+    /**
+     * @brief 创建特定类型的搜索引擎
+     * 
+     * 使用工厂模式创建引擎，而不是直接实例化
+     */
+    static std::shared_ptr<SearchEngine> create(SearchType type, QObject *parent = nullptr);
+    
+    /**
+     * @brief 注册自定义搜索引擎提供者
+     */
+    static void registerProvider(const QString &name, std::shared_ptr<SearchProvider> provider);
     
     /**
      * @brief 构造函数
@@ -122,6 +136,16 @@ public:
      * @brief 清除缓存
      */
     void clearCache();
+    
+    /**
+     * @brief 获取文件名搜索API
+     */
+    FileNameSearchAPI fileNameOptions();
+    
+    /**
+     * @brief 获取内容搜索API
+     */
+    ContentSearchAPI contentOptions();
 
 signals:
     /**
@@ -165,8 +189,21 @@ signals:
      * @param message 错误消息
      */
     void error(const QString &message);
+    
+    /**
+     * @brief 搜索状态更新信号，提供更细粒度的进度信息
+     * 
+     * @param processedFiles 已处理的文件数
+     * @param matchedFiles 匹配的文件数
+     * @param processedBytes 已处理的字节数
+     * @param elapsedMs 已耗时（毫秒）
+     */
+    void searchStatusUpdate(int processedFiles, int matchedFiles, 
+                          qint64 processedBytes, qint64 elapsedMs);
 
 private:
+    // 隐藏构造函数，强制使用工厂方法
+    explicit SearchEngine(QObject *parent = nullptr);
     std::unique_ptr<AbstractSearchEngine> d_ptr;
 };
 

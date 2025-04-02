@@ -5,6 +5,7 @@
 #include <dfm6-search/searchengine.h>
 #include <dfm6-search/searchprovider.h>
 #include <dfm6-search/searchoptions.h>
+#include <dfm6-search/searchresult.h>
 
 #include <memory>
 
@@ -16,7 +17,7 @@ class SearchFactoryData;
 /**
  * @brief 搜索工厂类
  * 
- * 创建和管理搜索引擎实例
+ * 创建和管理搜索引擎实例和相关对象
  */
 class DFM6_SEARCH_EXPORT SearchFactory
 {
@@ -28,11 +29,18 @@ public:
     
     /**
      * @brief 创建搜索引擎
-     * 
-     * @param type 搜索类型
-     * @return 搜索引擎对象
      */
-    std::unique_ptr<SearchEngine> createEngine(SearchType type);
+    static std::shared_ptr<SearchEngine> createEngine(SearchType type, QObject *parent = nullptr);
+    
+    /**
+     * @brief 创建搜索查询
+     */
+    static SearchQuery createQuery(const QString &keyword, QueryType type = QueryType::Simple);
+    
+    /**
+     * @brief 注册自定义搜索引擎类型
+     */
+    static void registerEngineCreator(SearchType type, std::function<std::shared_ptr<AbstractSearchEngine>(QObject*)> creator);
     
     /**
      * @brief 注册搜索提供者
@@ -80,6 +88,15 @@ public:
      * @return 对应类型的搜索选项
      */
     std::unique_ptr<SearchOptions> createOptions(SearchType type);
+    
+    /**
+     * @brief 创建搜索结果
+     * 
+     * @param type 搜索类型
+     * @param path 文件路径
+     * @return 对应类型的搜索结果
+     */
+    std::unique_ptr<SearchResult> createResult(SearchType type, const QString &path);
 
 private:
     /**

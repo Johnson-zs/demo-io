@@ -1,6 +1,8 @@
 #include "contentsearchengine.h"
 #include <QtConcurrent>
 #include <QDebug>
+#include <QFile>
+#include <QTextStream>
 
 // 前向声明，实际项目中需要包含真实的头文件
 class ContentSearcher;
@@ -117,6 +119,9 @@ QFuture<void> ContentSearchEngine::searchWithCallback(const SearchQuery &query,
 
 QList<SearchResult> ContentSearchEngine::searchSync(const SearchQuery &query)
 {
+    // 保存当前查询以便供 convertResults 使用
+    m_currentQuery = query;
+    
     // 注：这里只是演示，实际项目中应使用 ContentSearcher 实现
     QList<SearchResult> results;
     
@@ -230,7 +235,27 @@ QList<DFM6::Search::SearchResult> ContentSearchEngine::convertResults(const QLis
     
     for (const auto &result : results) {
         DFM6::Search::SearchResult searchResult(result.path);
-        searchResult.setHighlightedContent(result.content);
+        
+        // 处理高亮内容
+        if (!result.content.isEmpty()) {
+            // 优先使用已经高亮的内容
+            searchResult.setHighlightedContent(result.content);
+        } else {
+            // 如果底层引擎没有提供高亮内容，可以尝试自己实现
+            // 例如，读取文件的一小部分并高亮关键词
+            QFile file(result.path);
+            if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&file);
+                QString content = in.read(m_options.maxPreviewLength());
+                file.close();
+                
+                // 使用工具函数高亮关键词
+                QStringList keywords = processQuery(m_currentQuery);
+                QString highlighted = DFM6::Search::Utils::SearchUtility::highlightKeywords(
+                    content, keywords, "<b>", "</b>");
+                searchResult.setHighlightedContent(highlighted);
+            }
+        }
         
         // 设置文件信息
         QFileInfo fileInfo(result.path);
@@ -238,8 +263,18 @@ QList<DFM6::Search::SearchResult> ContentSearchEngine::convertResults(const QLis
         searchResult.setModifiedTime(fileInfo.lastModified());
         searchResult.setIsDirectory(fileInfo.isDir());
         
-        // 设置默认分数
-        searchResult.setScore(1.0f);
+        // 计算相关性分数 (0.0 - 1.0)
+        float score = 0.5f;  // 默认中等相关性
+        if (result.content.contains("<b>", Qt::CaseInsensitive)) {
+            // 根据高亮标记出现的次数计算分数
+            int highlightCount = result.content.count("<b>", Qt::CaseInsensitive);
+            score = qMin(1.0f, 0.5f + (highlightCount * 0.1f));
+        }
+        searchResult.setScore(score);
+        
+        // 添加自定义属性
+        searchResult.setCustomAttribute("matchCount", result.content.count("<b>", Qt::CaseInsensitive));
+        searchResult.setCustomAttribute("fileType", fileInfo.suffix());
         
         convertedResults.append(searchResult);
     }
