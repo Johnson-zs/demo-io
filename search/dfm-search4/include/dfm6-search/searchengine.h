@@ -7,6 +7,7 @@
 #include <dfm6-search/searchresult.h>
 #include <dfm6-search/filenamesearchapi.h>
 #include <dfm6-search/contentsearchapi.h>
+#include <dfm6-search/desktopsearchapi.h>
 
 #include <QObject>
 #include <QString>
@@ -147,6 +148,11 @@ public:
      * @brief 获取内容搜索API
      */
     ContentSearchAPI contentOptions();
+    
+    /**
+     * @brief 获取桌面应用搜索API
+     */
+    DesktopSearchAPI desktopOptions();
 
 signals:
     /**

@@ -15,7 +15,11 @@ set(SOURCES
 
     contentsearch/contentsearchengine.cpp
     contentsearch/contentsearchoptions.cpp
-   # contentsearch/contentsearchapi.cpp
+    contentsearch/contentsearchapi.cpp
+
+    desktopsearch/desktopsearchengine.cpp
+    desktopsearch/desktopsearchoptions.cpp
+    desktopsearch/desktopsearchapi.cpp
 
     utils/searchutility.cpp
 )
@@ -25,13 +29,15 @@ set(HEADERS
     core/abstractsearchengine.h
     core/searchoptionsdata.h
     core/searchresultdata.h
-   # core/searchquerydata.h
     
     filenamesearch/filenamesearchengine.h
     filenamesearch/filenamesearchoptions.h
     
     contentsearch/contentsearchengine.h
     contentsearch/contentsearchoptions.h
+    
+    desktopsearch/desktopsearchengine.h
+    desktopsearch/desktopsearchoptions.h
     
     utils/searchutility.h
 )
@@ -47,6 +53,7 @@ set(PUBLIC_HEADERS
     ${CMAKE_SOURCE_DIR}/include/dfm6-search/searchfactory.h
     ${CMAKE_SOURCE_DIR}/include/dfm6-search/filenamesearchapi.h
     ${CMAKE_SOURCE_DIR}/include/dfm6-search/contentsearchapi.h
+    ${CMAKE_SOURCE_DIR}/include/dfm6-search/desktopsearchapi.h
 )
 
 # 添加库定义

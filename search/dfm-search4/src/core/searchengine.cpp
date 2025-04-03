@@ -1,6 +1,7 @@
 #include <dfm6-search/searchengine.h>
 #include "../filenamesearch/filenamesearchengine.h"
 #include "../contentsearch/contentsearchengine.h"
+#include "../desktopsearch/desktopsearchengine.h"
 #include <QtConcurrent>
 
 namespace DFM6 {
@@ -45,6 +46,9 @@ void SearchEngine::setSearchType(SearchType type)
         break;
     case SearchType::Content:
         d_ptr = std::make_unique<ContentSearchEngine>();
+        break;
+    case SearchType::Desktop:
+        d_ptr = std::make_unique<DesktopSearchEngine>();
         break;
     default:
         qWarning("Unsupported search type: %d", static_cast<int>(type));
@@ -153,6 +157,12 @@ ContentSearchAPI SearchEngine::contentOptions()
 {
     SearchOptions& options = searchOptions();
     return ContentSearchAPI(options);
+}
+
+DesktopSearchAPI SearchEngine::desktopOptions()
+{
+    SearchOptions& options = searchOptions();
+    return DesktopSearchAPI(options);
 }
 
 SearchEngine* SearchEngine::create(SearchType type, QObject *parent)

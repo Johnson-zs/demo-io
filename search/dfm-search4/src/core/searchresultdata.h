@@ -4,6 +4,7 @@
 #include <QString>
 #include <QDateTime>
 #include <QVariantMap>
+#include <QStringList>
 
 namespace DFM6 {
 namespace Search {
@@ -65,6 +66,28 @@ public:
     int lineNumber = -1;
     int matchStart = -1;
     int matchLength = 0;
+    
+    // 实现克隆方法
+    SearchResultData* clone() const override;
+};
+
+/**
+ * @brief 桌面应用搜索结果的数据类
+ */
+class DesktopSearchResultData : public SearchResultData
+{
+public:
+    DesktopSearchResultData();
+    DesktopSearchResultData(const QString &path);
+    DesktopSearchResultData(const DesktopSearchResultData &other);
+    
+    // 桌面应用搜索特有字段
+    QString applicationName;
+    QString description;
+    QString icon;
+    QString exec;
+    QStringList categories;
+    bool isVisible = true;
     
     // 实现克隆方法
     SearchResultData* clone() const override;

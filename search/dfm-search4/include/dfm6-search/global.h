@@ -16,6 +16,7 @@ namespace Search {
 enum class SearchType {
     FileName,   // 文件名搜索
     Content,   // 内容搜索
+    Desktop,   // 桌面应用搜索
     Custom = 50   // 用户自定义搜索类型
 };
 

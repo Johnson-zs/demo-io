@@ -1,8 +1,10 @@
 #include <dfm6-search/searchfactory.h>
 #include "../filenamesearch/filenamesearchengine.h"
 #include "../contentsearch/contentsearchengine.h"
+#include "../desktopsearch/desktopsearchengine.h"
 #include "../filenamesearch/filenamesearchoptions.h"
 #include "../contentsearch/contentsearchoptions.h"
+#include "../desktopsearch/desktopsearchoptions.h"
 #include <QMutex>
 #include <QMap>
 
@@ -38,6 +40,9 @@ SearchEngine* SearchFactory::createEngine(SearchType type, QObject *parent)
         engine = new SearchEngine(type, parent);
         break;
     case SearchType::Content:
+        engine = new SearchEngine(type, parent);
+        break;
+    case SearchType::Desktop:
         engine = new SearchEngine(type, parent);
         break;
     case SearchType::Custom:
@@ -99,6 +104,8 @@ std::unique_ptr<SearchOptions> SearchFactory::createOptions(SearchType type)
         return std::make_unique<FileNameSearchOptions>();
     case SearchType::Content:
         return std::make_unique<ContentSearchOptions>();
+    case SearchType::Desktop:
+        return std::make_unique<DesktopSearchOptions>();
     case SearchType::Custom:
         return std::make_unique<SearchOptions>();
     default:
