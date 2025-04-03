@@ -31,6 +31,38 @@ SearchResultData::SearchResultData(const SearchResultData &other)
 {
 }
 
+SearchResultData::SearchResultData(SearchResultData &&other) noexcept
+    : path(std::move(other.path)),
+      modifiedTime(std::move(other.modifiedTime)),
+      size(other.size),
+      score(other.score),
+      isDirectory(other.isDirectory),
+      customAttributes(std::move(other.customAttributes))
+{
+    // 清空其他对象的状态
+    other.size = 0;
+    other.score = 0.0f;
+    other.isDirectory = false;
+}
+
+SearchResultData& SearchResultData::operator=(SearchResultData &&other) noexcept
+{
+    if (this != &other) {
+        path = std::move(other.path);
+        modifiedTime = std::move(other.modifiedTime);
+        size = other.size;
+        score = other.score;
+        isDirectory = other.isDirectory;
+        customAttributes = std::move(other.customAttributes);
+        
+        // 清空其他对象的状态
+        other.size = 0;
+        other.score = 0.0f;
+        other.isDirectory = false;
+    }
+    return *this;
+}
+
 SearchResult::SearchResult()
     : d(std::make_unique<SearchResultData>())
 {

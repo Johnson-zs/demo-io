@@ -20,6 +20,7 @@ public:
     SearchResultData();
     SearchResultData(const QString &path);
     SearchResultData(const SearchResultData &other);
+    SearchResultData(SearchResultData &&other) noexcept;
     virtual ~SearchResultData() = default;
     
     // 公共数据字段
@@ -29,6 +30,9 @@ public:
     float score;
     bool isDirectory;
     QVariantMap customAttributes;
+    
+    // 移动赋值运算符
+    SearchResultData& operator=(SearchResultData &&other) noexcept;
     
     // 虚函数用于运行时类型识别
     virtual SearchResultData* clone() const;
