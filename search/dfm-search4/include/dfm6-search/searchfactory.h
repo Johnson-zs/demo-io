@@ -29,8 +29,11 @@ public:
     
     /**
      * @brief 创建搜索引擎
+     * 
+     * 这是创建SearchEngine的内部实现方法，
+     * 客户端代码应使用SearchEngine::create()
      */
-    static std::shared_ptr<SearchEngine> createEngine(SearchType type, QObject *parent = nullptr);
+    static SearchEngine* createEngine(SearchType type, QObject *parent = nullptr);
     
     /**
      * @brief 创建搜索查询

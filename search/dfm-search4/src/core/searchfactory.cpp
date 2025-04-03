@@ -29,16 +29,16 @@ SearchFactory::SearchFactory()
 
 SearchFactory::~SearchFactory() = default;
 
-std::unique_ptr<SearchEngine> SearchFactory::createEngine(SearchType type)
+SearchEngine* SearchFactory::createEngine(SearchType type, QObject *parent)
 {
-    std::unique_ptr<SearchEngine> engine;
+    SearchEngine* engine = nullptr;
     
     switch (type) {
     case SearchType::FileName:
-        engine = std::make_unique<SearchEngine>(type);
+        engine = new SearchEngine(type, parent);
         break;
     case SearchType::Content:
-        engine = std::make_unique<SearchEngine>(type);
+        engine = new SearchEngine(type, parent);
         break;
     case SearchType::Custom:
         // 由应用程序基于provider自行创建
@@ -104,6 +104,27 @@ std::unique_ptr<SearchOptions> SearchFactory::createOptions(SearchType type)
     default:
         return std::make_unique<SearchOptions>();
     }
+}
+
+SearchQuery SearchFactory::createQuery(const QString &keyword, QueryType type)
+{
+    return SearchQuery(keyword, type);
+}
+
+void SearchFactory::registerEngineCreator(SearchType type, 
+                                         std::function<std::shared_ptr<AbstractSearchEngine>(QObject*)> creator)
+{
+    // 这里可以添加自定义引擎创建器的注册逻辑
+    // 需要在SearchFactoryData中添加相应的存储
+}
+
+std::unique_ptr<SearchResult> SearchFactory::createResult(SearchType type, const QString &path)
+{
+    std::unique_ptr<SearchResult> result = std::make_unique<SearchResult>();
+    result->setPath(path);
+    result->setType(type);
+    // 根据类型设置其他属性
+    return result;
 }
 
 }  // namespace Search

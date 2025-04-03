@@ -38,9 +38,10 @@ public:
     /**
      * @brief 创建特定类型的搜索引擎
      * 
-     * 使用工厂模式创建引擎，而不是直接实例化
+     * 使用工厂模式创建引擎，这是唯一创建SearchEngine的方法
+     * 返回的对象由Qt父子关系管理生命周期
      */
-    static std::shared_ptr<SearchEngine> create(SearchType type, QObject *parent = nullptr);
+    static SearchEngine* create(SearchType type, QObject *parent = nullptr);
     
     /**
      * @brief 注册自定义搜索引擎提供者
@@ -201,9 +202,15 @@ signals:
     void searchStatusUpdate(int processedFiles, int matchedFiles, 
                           qint64 processedBytes, qint64 elapsedMs);
 
-private:
-    // 隐藏构造函数，强制使用工厂方法
+protected:
+    // 将构造函数移到protected，禁止直接创建
     explicit SearchEngine(QObject *parent = nullptr);
+    SearchEngine(SearchType type, QObject *parent = nullptr);
+    
+    // 允许工厂类访问
+    friend class SearchFactory;
+
+private:
     std::unique_ptr<AbstractSearchEngine> d_ptr;
 };
 

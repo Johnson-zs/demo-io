@@ -155,5 +155,16 @@ ContentSearchAPI SearchEngine::contentOptions()
     return ContentSearchAPI(options);
 }
 
+SearchEngine* SearchEngine::create(SearchType type, QObject *parent)
+{
+    // 这是客户端唯一可用的创建引擎的方法
+    return SearchFactory::createEngine(type, parent);
+}
+
+void SearchEngine::registerProvider(const QString &name, std::shared_ptr<SearchProvider> provider)
+{
+    SearchFactory::instance().registerProvider(provider);
+}
+
 }  // namespace Search
 }  // namespace DFM6 
