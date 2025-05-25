@@ -1,0 +1,31 @@
+Office Preview 测试文档
+
+这是一个用于测试Office预览程序的示例文档。
+
+项目特性：
+• 支持Word文档预览 (.docx, .doc)
+• 支持Excel表格预览 (.xlsx, .xls)
+• 支持PowerPoint演示文稿预览 (.pptx, .ppt)
+
+技术栈：
+• Qt6 Widgets (C++17)
+• LibreOffice Headless转换
+• Poppler-Qt6渲染
+• CMake构建系统
+
+主要功能：
+1. 拖拽文件支持
+2. 高质量PDF渲染
+3. 灵活的缩放控制
+4. 多页文档导航
+5. 智能缓存机制
+6. 最近文件列表
+7. 现代化深色主题
+
+开发信息：
+作者：Office Preview Team
+日期：2024年5月25日
+版本：v1.0.0
+
+测试说明：
+请使用此文档测试程序的各种功能，包括打开文件、缩放、翻页等操作。 
