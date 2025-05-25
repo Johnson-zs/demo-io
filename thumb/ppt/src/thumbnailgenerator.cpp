@@ -1,14 +1,18 @@
 #include "thumbnailgenerator.h"
+#include "thumbnailextractor.h"
 #include <QDebug>
 #include <QCoreApplication>
 #include <QRegularExpression>
+#include <QBuffer>
 
 ThumbnailGenerator::ThumbnailGenerator(QObject *parent)
     : QObject(parent)
     , m_libreOfficeProcess(nullptr)
+    , m_extractor(nullptr)
     , m_checkTimer(new QTimer(this))
     , m_isGenerating(false)
     , m_expectedPages(0)
+    , m_generationMethod(AutoDetect)
 {
     connect(m_checkTimer, &QTimer::timeout, this, &ThumbnailGenerator::checkThumbnailFiles);
 }
@@ -26,11 +30,6 @@ void ThumbnailGenerator::generateThumbnails(const QString &pptFilePath)
         return;
     }
     
-    if (!checkLibreOfficeAvailable()) {
-        emit generationError("LibreOffice未安装或不可用。请安装LibreOffice。");
-        return;
-    }
-    
     m_currentPptFile = pptFilePath;
     m_isGenerating = true;
     m_generatedFiles.clear();
@@ -38,39 +37,28 @@ void ThumbnailGenerator::generateThumbnails(const QString &pptFilePath)
     
     setupTempDirectory();
     
-    // 创建LibreOffice进程
-    if (m_libreOfficeProcess) {
-        m_libreOfficeProcess->kill();
-        m_libreOfficeProcess->deleteLater();
+    // 根据设置的方法选择生成方式
+    switch (m_generationMethod) {
+        case KDEExtraction:
+            if (!tryKDEExtraction(pptFilePath)) {
+                emit generationError("KDE提取方式失败");
+                m_isGenerating = false;
+            }
+            break;
+            
+        case LibreOfficeConversion:
+            useLibreOfficeConversion(pptFilePath);
+            break;
+            
+        case AutoDetect:
+        default:
+            // 自动检测：优先尝试KDE方式
+            if (!tryKDEExtraction(pptFilePath)) {
+                qDebug() << "KDE extraction failed, fallback to LibreOffice";
+                useLibreOfficeConversion(pptFilePath);
+            }
+            break;
     }
-    
-    m_libreOfficeProcess = new QProcess(this);
-    connect(m_libreOfficeProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &ThumbnailGenerator::onConversionFinished);
-    connect(m_libreOfficeProcess, &QProcess::errorOccurred,
-            this, &ThumbnailGenerator::onConversionError);
-    
-    // 构建LibreOffice命令行参数
-    QString libreOfficePath = getLibreOfficePath();
-    QStringList arguments;
-    arguments << "--headless"
-              << "--convert-to" << "png"
-              << "--outdir" << m_tempDir
-              << m_currentPptFile;
-    
-    qDebug() << "Starting LibreOffice with arguments:" << arguments;
-    
-    // 启动转换进程
-    m_libreOfficeProcess->start(libreOfficePath, arguments);
-    
-    if (!m_libreOfficeProcess->waitForStarted(5000)) {
-        emit generationError("无法启动LibreOffice进程");
-        m_isGenerating = false;
-        return;
-    }
-    
-    // 启动检查定时器
-    m_checkTimer->start(CHECK_INTERVAL_MS);
 }
 
 void ThumbnailGenerator::stopGeneration()
@@ -272,5 +260,118 @@ void ThumbnailGenerator::checkThumbnailFiles()
         m_isGenerating = false;
         m_checkTimer->stop();
         checkCount = 0;
+    }
+}
+
+bool ThumbnailGenerator::tryKDEExtraction(const QString &pptFilePath)
+{
+    // 创建提取器
+    if (!m_extractor) {
+        m_extractor = new ThumbnailExtractor(this);
+        connect(m_extractor, &ThumbnailExtractor::thumbnailExtracted,
+                this, &ThumbnailGenerator::onThumbnailExtracted);
+        connect(m_extractor, &ThumbnailExtractor::extractionFinished,
+                this, &ThumbnailGenerator::onExtractorFinished);
+        connect(m_extractor, &ThumbnailExtractor::extractionError,
+                this, &ThumbnailGenerator::onExtractorError);
+    }
+    
+    // 尝试提取
+    bool success = m_extractor->extractThumbnails(pptFilePath);
+    if (success) {
+        emit methodUsed("KDE风格提取");
+        qDebug() << "Using KDE-style extraction";
+    }
+    
+    return success;
+}
+
+void ThumbnailGenerator::useLibreOfficeConversion(const QString &pptFilePath)
+{
+    if (!checkLibreOfficeAvailable()) {
+        emit generationError("LibreOffice未安装或不可用。请安装LibreOffice。");
+        m_isGenerating = false;
+        return;
+    }
+    
+    emit methodUsed("LibreOffice转换");
+    qDebug() << "Using LibreOffice conversion for:" << pptFilePath;
+    
+    // 创建LibreOffice进程
+    if (m_libreOfficeProcess) {
+        m_libreOfficeProcess->kill();
+        m_libreOfficeProcess->deleteLater();
+    }
+    
+    m_libreOfficeProcess = new QProcess(this);
+    connect(m_libreOfficeProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &ThumbnailGenerator::onConversionFinished);
+    connect(m_libreOfficeProcess, &QProcess::errorOccurred,
+            this, &ThumbnailGenerator::onConversionError);
+    
+    // 构建LibreOffice命令行参数
+    QString libreOfficePath = getLibreOfficePath();
+    QStringList arguments;
+    arguments << "--headless"
+              << "--convert-to" << "png"
+              << "--outdir" << m_tempDir
+              << pptFilePath;
+    
+    qDebug() << "Starting LibreOffice with arguments:" << arguments;
+    
+    // 启动转换进程
+    m_libreOfficeProcess->start(libreOfficePath, arguments);
+    
+    if (!m_libreOfficeProcess->waitForStarted(5000)) {
+        emit generationError("无法启动LibreOffice进程");
+        m_isGenerating = false;
+        return;
+    }
+    
+    // 启动检查定时器
+    m_checkTimer->start(CHECK_INTERVAL_MS);
+}
+
+QString ThumbnailGenerator::saveImageToTemp(const QImage &image, int pageNumber)
+{
+    QString fileName = QString("thumbnail_%1.png").arg(pageNumber, 3, 10, QLatin1Char('0'));
+    QString filePath = m_tempDir + "/" + fileName;
+    
+    if (image.save(filePath, "PNG", 90)) {
+        qDebug() << "Saved extracted thumbnail to:" << filePath;
+        return filePath;
+    }
+    
+    qWarning() << "Failed to save extracted thumbnail to:" << filePath;
+    return QString();
+}
+
+void ThumbnailGenerator::onThumbnailExtracted(const QImage &image, int pageNumber)
+{
+    // 将提取的图像保存到临时目录
+    QString filePath = saveImageToTemp(image, pageNumber);
+    if (!filePath.isEmpty()) {
+        emit thumbnailGenerated(filePath, pageNumber);
+    }
+}
+
+void ThumbnailGenerator::onExtractorFinished(int totalCount)
+{
+    qDebug() << "KDE extraction finished, total thumbnails:" << totalCount;
+    m_isGenerating = false;
+    emit generationFinished();
+}
+
+void ThumbnailGenerator::onExtractorError(const QString &error)
+{
+    qDebug() << "KDE extraction error:" << error;
+    
+    // 如果是自动检测模式且KDE提取失败，尝试LibreOffice
+    if (m_generationMethod == AutoDetect) {
+        qDebug() << "Auto-detect mode: falling back to LibreOffice";
+        useLibreOfficeConversion(m_currentPptFile);
+    } else {
+        emit generationError(error);
+        m_isGenerating = false;
     }
 } 

@@ -14,6 +14,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_clearButton(nullptr)
     , m_fileInfoLabel(nullptr)
     , m_pageCountLabel(nullptr)
+    , m_methodComboBox(nullptr)
+    , m_methodLabel(nullptr)
     , m_scrollArea(nullptr)
     , m_thumbnailContainer(nullptr)
     , m_thumbnailLayout(nullptr)
@@ -36,6 +38,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onGenerationFinished);
     connect(m_generator, &ThumbnailGenerator::generationError,
             this, &MainWindow::onGenerationError);
+    connect(m_generator, &ThumbnailGenerator::methodUsed,
+            this, &MainWindow::onMethodUsed);
     
     updateStatusMessage("就绪");
     setWindowTitle("PPT缩略图查看器");
@@ -112,10 +116,47 @@ void MainWindow::setupUI()
     m_pageCountLabel = new QLabel("", this);
     m_pageCountLabel->setStyleSheet("QLabel { color: #cccccc; font-size: 12px; }");
     
+    // 生成方式选择
+    m_methodLabel = new QLabel("生成方式:", this);
+    m_methodLabel->setStyleSheet("QLabel { color: #cccccc; font-size: 12px; }");
+    
+    m_methodComboBox = new QComboBox(this);
+    m_methodComboBox->addItem("自动检测", static_cast<int>(ThumbnailGenerator::AutoDetect));
+    m_methodComboBox->addItem("KDE提取", static_cast<int>(ThumbnailGenerator::KDEExtraction));
+    m_methodComboBox->addItem("LibreOffice转换", static_cast<int>(ThumbnailGenerator::LibreOfficeConversion));
+    m_methodComboBox->setMinimumHeight(35);
+    m_methodComboBox->setStyleSheet(
+        "QComboBox {"
+        "    background-color: #3c3c3c;"
+        "    color: #ffffff;"
+        "    border: 2px solid #555555;"
+        "    border-radius: 5px;"
+        "    padding: 5px;"
+        "    font-size: 12px;"
+        "}"
+        "QComboBox::drop-down {"
+        "    border: none;"
+        "}"
+        "QComboBox::down-arrow {"
+        "    image: none;"
+        "    border: none;"
+        "}"
+        "QComboBox QAbstractItemView {"
+        "    background-color: #3c3c3c;"
+        "    color: #ffffff;"
+        "    border: 1px solid #555555;"
+        "    selection-background-color: #0078d4;"
+        "}"
+    );
+    connect(m_methodComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onGenerationMethodChanged);
+    
     m_toolbarLayout->addWidget(m_openButton);
     m_toolbarLayout->addWidget(m_clearButton);
     m_toolbarLayout->addWidget(m_fileInfoLabel);
     m_toolbarLayout->addStretch();
+    m_toolbarLayout->addWidget(m_methodLabel);
+    m_toolbarLayout->addWidget(m_methodComboBox);
     m_toolbarLayout->addWidget(m_pageCountLabel);
     
     m_mainLayout->addLayout(m_toolbarLayout);
@@ -294,19 +335,42 @@ void MainWindow::updateStatusMessage(const QString &message)
     m_statusLabel->setText(message);
 }
 
+void MainWindow::onMethodUsed(const QString &methodName)
+{
+    updateStatusMessage(QString("使用 %1 生成缩略图").arg(methodName));
+}
+
+void MainWindow::onGenerationMethodChanged()
+{
+    if (!m_generator) return;
+    
+    int methodIndex = m_methodComboBox->currentData().toInt();
+    auto method = static_cast<ThumbnailGenerator::GenerationMethod>(methodIndex);
+    m_generator->setGenerationMethod(method);
+    
+    QString methodName = m_methodComboBox->currentText();
+    qDebug() << "Changed generation method to:" << methodName;
+}
+
 void MainWindow::showAbout()
 {
     QMessageBox::about(this, "关于",
         "<h3>PPT缩略图查看器</h3>"
-        "<p>版本 1.0</p>"
+        "<p>版本 2.0</p>"
         "<p>基于Qt6开发的PowerPoint文件缩略图生成和查看工具。</p>"
-        "<p>使用LibreOffice进行文件转换。</p>"
+        "<p><b>支持两种生成方式：</b></p>"
+        "<ul>"
+        "<li><b>KDE提取</b>：直接从文件提取内嵌缩略图（速度极快）</li>"
+        "<li><b>LibreOffice转换</b>：使用LibreOffice转换（兼容性好）</li>"
+        "<li><b>自动检测</b>：优先KDE方式，失败则使用LibreOffice</li>"
+        "</ul>"
         "<p><b>功能特性：</b></p>"
         "<ul>"
         "<li>支持.ppt和.pptx格式</li>"
         "<li>高质量缩略图生成</li>"
         "<li>现代化界面设计</li>"
         "<li>快速预览和浏览</li>"
+        "<li>多种生成方式可选</li>"
         "</ul>"
     );
 } 

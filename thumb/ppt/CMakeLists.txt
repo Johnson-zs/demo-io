@@ -18,12 +18,14 @@ set(SOURCES
     src/mainwindow.cpp
     src/thumbnailgenerator.cpp
     src/thumbnailwidget.cpp
+    src/thumbnailextractor.cpp
 )
 
 set(HEADERS
     src/mainwindow.h
     src/thumbnailgenerator.h
     src/thumbnailwidget.h
+    src/thumbnailextractor.h
 )
 
 # 创建可执行文件

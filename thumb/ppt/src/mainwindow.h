@@ -15,6 +15,7 @@
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QSplitter>
+#include <QComboBox>
 
 class ThumbnailGenerator;
 class ThumbnailWidget;
@@ -33,6 +34,8 @@ private slots:
     void onThumbnailGenerated(const QString &imagePath, int pageNumber);
     void onGenerationFinished();
     void onGenerationError(const QString &error);
+    void onMethodUsed(const QString &methodName);
+    void onGenerationMethodChanged();
     void showAbout();
 
 private:
@@ -51,6 +54,8 @@ private:
     QPushButton *m_clearButton;
     QLabel *m_fileInfoLabel;
     QLabel *m_pageCountLabel;
+    QComboBox *m_methodComboBox;
+    QLabel *m_methodLabel;
     
     QScrollArea *m_scrollArea;
     QWidget *m_thumbnailContainer;

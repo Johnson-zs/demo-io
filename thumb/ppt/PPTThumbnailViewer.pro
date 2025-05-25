@@ -9,12 +9,14 @@ SOURCES += \
     src/main.cpp \
     src/mainwindow.cpp \
     src/thumbnailgenerator.cpp \
-    src/thumbnailwidget.cpp
+    src/thumbnailwidget.cpp \
+    src/thumbnailextractor.cpp
 
 HEADERS += \
     src/mainwindow.h \
     src/thumbnailgenerator.h \
-    src/thumbnailwidget.h
+    src/thumbnailwidget.h \
+    src/thumbnailextractor.h
 
 INCLUDEPATH += src
 
