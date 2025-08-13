@@ -1,9 +1,10 @@
 #include "synccopyalgorithm.h"
 
-#include "core/FileSystemUtils.h"
+#include "../core/FileSystemUtils.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QThread>
+#include <QDebug>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -46,7 +47,16 @@ bool SyncCopyAlgorithm::copyFile(const QString &source, const QString &dest,
         m_copiedBytes = 0;
     }
 
-    return copyFileInternal(source, dest, observer);
+    auto result = copyFileInternal(source, dest, observer);
+    
+    // Windows-style sync: ensure data is written to disk
+    int destFd = open(dest.toLocal8Bit().constData(), O_RDONLY);
+    if (destFd >= 0) {
+        performSyncOperation(destFd, dest);
+        close(destFd);
+    }
+    
+    return result;
 }
 
 bool SyncCopyAlgorithm::copyFileInternal(const QString &source, const QString &dest,
@@ -78,7 +88,7 @@ bool SyncCopyAlgorithm::copyFileInternal(const QString &source, const QString &d
         if (success) {
             observer->onFileComplete(source);
         } else {
-            observer->onError(QString("Failed to copy file: %1 to %2").arg(source, dest));
+            observer->onError(QString("Failed to copy file: %1 to %2").arg(source).arg(dest));
         }
     }
 
@@ -118,6 +128,13 @@ bool SyncCopyAlgorithm::copyDirectory(const QString &source, const QString &dest
 
     // Copy all files recursively
     bool result = copyDirectoryRecursive(source, dest, observer);
+    
+    // Windows-style sync for directory: ensure all data is written to disk
+    int destFd = open(dest.toLocal8Bit().constData(), O_RDONLY);
+    if (destFd >= 0) {
+        performSyncOperation(destFd, dest);
+        close(destFd);
+    }
 
     // Reset directory copy mode
     m_isDirectoryCopy = false;
@@ -137,7 +154,7 @@ bool SyncCopyAlgorithm::supportsPause() const
 
 QString SyncCopyAlgorithm::getName() const
 {
-    return "Default Algorithm (copy_file_range + chunked fallback)";
+    return "Windows-style Sync Copy (No Cache, Dynamic Chunks)";
 }
 
 void SyncCopyAlgorithm::pause()
@@ -249,7 +266,8 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
         return false;
     }
 
-    int destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    // Windows-style: Use O_SYNC to bypass kernel caching
+    int destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0644);
     if (destFd < 0) {
         if (observer) {
             observer->onError(QString("Failed to open destination file: %1 (errno: %2)")
@@ -260,31 +278,47 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
         return false;
     }
 
-    struct stat srcStat;
-    if (fstat(srcFd, &srcStat) < 0) {
+    qint64 totalSize = getFileSize(source);
+    if (totalSize < 0) {
         close(srcFd);
         close(destFd);
         return false;
     }
 
-    qint64 totalSize = srcStat.st_size;
-    qint64 copied = 0;
-    char buffer[CHUNK_SIZE];
+    // Dynamic chunk size based on file size
+    qint64 chunkSize = ChunkStrategy::getOptimalChunkSize(totalSize);
+    qDebug() << "Using chunk size:" << chunkSize << "bytes for file of size:" << totalSize << "bytes";
 
-    while (copied < totalSize && !observer->shouldStop()) {
-        // Check for pause state and wait efficiently
-        if (observer->shouldPause()) {
-            // syncfs(destFd);
+    qint64 copied = 0;
+    char *buffer = (char *)malloc(chunkSize);
+    if (!buffer) {
+        close(srcFd);
+        close(destFd);
+        return false;
+    }
+
+    while (copied < totalSize && (!observer || !observer->shouldStop())) {
+        // Check for pause state and implement Windows-style pause behavior
+        if (observer && observer->shouldPause()) {
+            // Sync data before pausing (Windows-style behavior)
+            performSyncOperation(destFd, dest);
             close(destFd);
             observer->waitWhilePaused();
-            destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            
+            // Reopen in append mode to continue from where we left off
+            destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_APPEND | O_SYNC, 0644);
+            if (destFd < 0) {
+                free(buffer);
+                close(srcFd);
+                return false;
+            }
         }
 
-        if (observer->shouldStop()) {
+        if (observer && observer->shouldStop()) {
             break;
         }
 
-        qint64 toRead = std::min(CHUNK_SIZE, totalSize - copied);
+        qint64 toRead = qMin(chunkSize, totalSize - copied);
         ssize_t bytesRead = read(srcFd, buffer, toRead);
 
         if (bytesRead < 0) {
@@ -294,6 +328,7 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
             close(srcFd);
             close(destFd);
             unlink(dest.toLocal8Bit().constData());
+            free(buffer);
             return false;
         }
 
@@ -302,7 +337,7 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
         }
 
         ssize_t bytesWritten = 0;
-        while (bytesWritten < bytesRead && !observer->shouldStop()) {
+        while (bytesWritten < bytesRead && (!observer || !observer->shouldStop())) {
             ssize_t written = write(destFd, buffer + bytesWritten,
                                     bytesRead - bytesWritten);
             if (written < 0) {
@@ -312,6 +347,7 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
                 close(srcFd);
                 close(destFd);
                 unlink(dest.toLocal8Bit().constData());
+                free(buffer);
                 return false;
             }
             bytesWritten += written;
@@ -328,8 +364,8 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
 
     close(srcFd);
     close(destFd);
-
-    return !observer->shouldStop() && copied == totalSize;
+    free(buffer);
+    return (!observer || !observer->shouldStop()) && copied == totalSize;
 }
 
 bool SyncCopyAlgorithm::shouldFallback(int errorCode) const
@@ -381,6 +417,23 @@ bool SyncCopyAlgorithm::copyDirectoryRecursive(const QString &source, const QStr
 bool SyncCopyAlgorithm::createDirectoryStructure(const QString &source, const QString &dest)
 {
     return FileSystemUtils::ensureDirectoryExists(dest);
+}
+
+void SyncCopyAlgorithm::performSyncOperation(int fd, const QString &path) const
+{
+    qDebug() << "Performing sync operation for:" << path;
+    if (fd >= 0) {
+        syncfs(fd);
+    }
+}
+
+qint64 SyncCopyAlgorithm::getFileSize(const QString &filePath) const
+{
+    struct stat fileStat;
+    if (stat(filePath.toLocal8Bit().constData(), &fileStat) == 0) {
+        return fileStat.st_size;
+    }
+    return -1;
 }
 
 void SyncCopyAlgorithm::waitIfPaused()
