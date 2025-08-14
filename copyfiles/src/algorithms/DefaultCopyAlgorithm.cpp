@@ -273,10 +273,7 @@ bool DefaultCopyAlgorithm::copyFileChunked(const QString &source, const QString 
     while (copied < totalSize && !observer->shouldStop()) {
         // Check for pause state and wait efficiently
         if (observer->shouldPause()) {
-            // syncfs(destFd);
-            close(destFd);
             observer->waitWhilePaused();
-            destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
         }
 
         if (observer->shouldStop()) {

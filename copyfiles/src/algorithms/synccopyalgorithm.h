@@ -39,7 +39,7 @@ public:
 private:
     // Constants for chunk size strategy
     static constexpr qint64 SMALL_FILE_CHUNK_SIZE = 1024 * 1024;   // for small files
-    static constexpr qint64 LARGE_FILE_CHUNK_SIZE = 16 * 1024 * 1024;   // for large files
+    static constexpr qint64 LARGE_FILE_CHUNK_SIZE = 8 * 1024 * 1024;   // for large files
     static constexpr qint64 LARGE_FILE_THRESHOLD = 16 * 1024 * 1024;   //  threshold
     static constexpr int MAX_RETRIES = 3;
 
