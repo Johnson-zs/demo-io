@@ -39,7 +39,7 @@ public:
 private:
     // Constants for chunk size strategy
     static constexpr qint64 SMALL_FILE_CHUNK_SIZE = 1024 * 1024;   // for small files
-    static constexpr qint64 LARGE_FILE_CHUNK_SIZE = 8 * 1024 * 1024;   // for large files
+    static constexpr qint64 LARGE_FILE_CHUNK_SIZE = 1 * 1024 * 1024;   // for large files
     static constexpr qint64 LARGE_FILE_THRESHOLD = 16 * 1024 * 1024;   //  threshold
     static constexpr int MAX_RETRIES = 3;
 
@@ -52,6 +52,23 @@ private:
         {
             return fileSize >= LARGE_FILE_THRESHOLD ? LARGE_FILE_CHUNK_SIZE : SMALL_FILE_CHUNK_SIZE;
         }
+    };
+
+    /**
+     * @brief File writer strategies following Strategy pattern
+     */
+    enum class WriteMode {
+        Direct,    // O_DIRECT mode
+        Normal     // Normal mode (no special flags)
+    };
+
+    struct FileWriter {
+        int fd;
+        WriteMode mode;
+        size_t alignment;
+        
+        FileWriter(int fd, WriteMode mode, size_t alignment = 4096) 
+            : fd(fd), mode(mode), alignment(alignment) {}
     };
 
     // Core copy methods
@@ -73,6 +90,14 @@ private:
     qint64 getFileSize(const QString &filePath) const;
     void waitIfPaused();
     bool isCancelled() const;
+
+    // New helper methods for SOLID refactoring
+    FileWriter openDestinationFile(const QString &dest, WriteMode preferredMode);
+    FileWriter reopenDestinationFileForResume(const QString &dest, WriteMode preferredMode);
+    bool copyWithWriter(int srcFd, FileWriter writer, qint64 totalSize, 
+                       const QString &dest, ProgressObserver *observer, bool &directModeSwitched);
+    char* allocateAlignedBuffer(size_t size, size_t alignment);
+    bool handlePauseResume(FileWriter &writer, const QString &dest, ProgressObserver *observer);
 
     // Progress tracking
     qint64 m_totalBytes;

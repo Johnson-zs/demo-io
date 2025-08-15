@@ -50,11 +50,13 @@ bool SyncCopyAlgorithm::copyFile(const QString &source, const QString &dest,
 
     auto result = copyFileInternal(source, dest, observer);
 
-    // Windows-style sync: ensure data is written to disk
-    int destFd = open(dest.toLocal8Bit().constData(), O_RDONLY);
-    if (destFd >= 0) {
-        performSyncOperation(destFd, dest);
-        close(destFd);
+    // Ensure data is synced to disk after file copy completion
+    if (result) {
+        int destFd = open(dest.toLocal8Bit().constData(), O_RDONLY);
+        if (destFd >= 0) {
+            performSyncOperation(destFd, dest);
+            close(destFd);
+        }
     }
 
     return result;
@@ -273,75 +275,152 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
         return false;
     }
 
-    // dd-style: Always try O_DIRECT first, then fallback dynamically if needed
-    int destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0666);
-    bool usingDirect = true;
-
-    if (destFd < 0 && (errno == EINVAL || errno == ENOTSUP)) {
-        // O_DIRECT not supported on this filesystem, fallback to O_SYNC
-        qDebug() << "O_DIRECT not supported, falling back to O_SYNC for:" << dest;
-        destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0666);
-        usingDirect = false;
-    }
-
-    if (destFd < 0) {
-        if (observer) {
-            observer->onError(QString("Failed to open destination file: %1 (errno: %2)")
-                                      .arg(dest)
-                                      .arg(strerror(errno)));
-        }
+    // Try to open with O_DIRECT first, fallback to normal mode if needed
+    FileWriter writer = openDestinationFile(dest, WriteMode::Direct);
+    if (writer.fd < 0) {
         close(srcFd);
         return false;
     }
 
-    qDebug() << "Using" << (usingDirect ? "O_DIRECT" : "O_SYNC") << "for file:" << dest;
+    bool directModeSwitched = false;
+    bool result = copyWithWriter(srcFd, writer, totalSize, dest, observer, directModeSwitched);
 
+    close(srcFd);
+
+    // dd-style: If we switched from O_DIRECT to normal mode during copy,
+    // ensure data is synced to disk and drop cache
+    if (result && directModeSwitched) {
+        qDebug() << "Syncing data to disk (fsync) after O_DIRECT fallback for:" << dest;
+        if (fsync(writer.fd) != 0) {
+            qDebug() << "fsync failed:" << strerror(errno);
+        }
+
+        // dd also uses fadvise to drop cache after switching from O_DIRECT
+        off_t currentPos = lseek(writer.fd, 0, SEEK_CUR);
+        if (currentPos > 0) {
+            if (posix_fadvise(writer.fd, currentPos, 0, POSIX_FADV_DONTNEED) != 0) {
+                qDebug() << "posix_fadvise failed:" << strerror(errno);
+            }
+        }
+    } else if (result && writer.mode == WriteMode::Normal) {
+        // For normal mode files, ensure sync
+        performSyncOperation(writer.fd, dest);
+    }
+
+    close(writer.fd);
+
+    return result;
+}
+
+SyncCopyAlgorithm::FileWriter SyncCopyAlgorithm::openDestinationFile(const QString &dest, WriteMode preferredMode)
+{
+    int destFd = -1;
+    WriteMode actualMode = preferredMode;
+
+    if (preferredMode == WriteMode::Direct) {
+        // Try O_DIRECT first
+        destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0666);
+
+        if (destFd < 0 && (errno == EINVAL || errno == ENOTSUP)) {
+            // O_DIRECT not supported, fallback to normal mode
+            qDebug() << "O_DIRECT not supported, falling back to normal mode for:" << dest;
+            actualMode = WriteMode::Normal;
+        }
+    }
+
+    if (destFd < 0) {
+        // Open in normal mode (no special flags)
+        destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        actualMode = WriteMode::Normal;
+    }
+
+    qDebug() << "Using" << (actualMode == WriteMode::Direct ? "O_DIRECT" : "normal")
+             << "mode for file:" << dest;
+
+    return FileWriter(destFd, actualMode);
+}
+
+SyncCopyAlgorithm::FileWriter SyncCopyAlgorithm::reopenDestinationFileForResume(const QString &dest, WriteMode preferredMode)
+{
+    int destFd = -1;
+    WriteMode actualMode = preferredMode;
+
+    if (preferredMode == WriteMode::Direct) {
+        // Try O_DIRECT first - use O_WRONLY (no truncate) and seek to end
+        destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_DIRECT, 0666);
+
+        if (destFd < 0 && (errno == EINVAL || errno == ENOTSUP)) {
+            // O_DIRECT not supported, fallback to normal mode
+            qDebug() << "O_DIRECT not supported for resume, falling back to normal mode for:" << dest;
+            actualMode = WriteMode::Normal;
+        }
+    }
+
+    if (destFd < 0) {
+        // Open in normal mode (no special flags, no truncate)
+        destFd = open(dest.toLocal8Bit().constData(), O_WRONLY, 0666);
+        actualMode = WriteMode::Normal;
+    }
+
+    if (destFd >= 0) {
+        // Seek to end of file to continue writing where we left off
+        if (lseek(destFd, 0, SEEK_END) < 0) {
+            qDebug() << "Failed to seek to end of file for resume:" << strerror(errno);
+            close(destFd);
+            return FileWriter(-1, actualMode);
+        }
+    }
+
+    qDebug() << "Reopened for resume using" << (actualMode == WriteMode::Direct ? "O_DIRECT" : "normal")
+             << "mode for file:" << dest;
+
+    return FileWriter(destFd, actualMode);
+}
+
+bool SyncCopyAlgorithm::copyWithWriter(int srcFd, FileWriter writer, qint64 totalSize,
+                                       const QString &dest, ProgressObserver *observer, bool &directModeSwitched)
+{
     // Dynamic chunk size based on file size, always align for potential O_DIRECT usage
     qint64 baseChunkSize = ChunkStrategy::getOptimalChunkSize(totalSize);
-
-    // Always align to 4096 bytes since we start with O_DIRECT
-    const size_t alignment = 4096;
-    qint64 chunkSize = ((baseChunkSize + alignment - 1) / alignment) * alignment;
+    qint64 chunkSize = ((baseChunkSize + writer.alignment - 1) / writer.alignment) * writer.alignment;
 
     qDebug() << "Using aligned chunk size:" << chunkSize << "bytes (base:" << baseChunkSize
              << ") for file of size:" << totalSize << "bytes";
 
-    qint64 copied = 0;
-
-    // Always use aligned allocation since we start with O_DIRECT
-    char *buffer = nullptr;
-    if (posix_memalign((void **)&buffer, alignment, chunkSize) != 0) {
+    char *buffer = allocateAlignedBuffer(chunkSize, writer.alignment);
+    if (!buffer) {
         if (observer) {
             observer->onError(QString("Failed to allocate aligned buffer: %1")
                                       .arg(strerror(errno)));
         }
-        close(srcFd);
-        close(destFd);
         return false;
     }
 
-    while (copied < totalSize && (!observer || !observer->shouldStop())) {
-        // Check for pause state and implement Windows-style pause behavior
-        if (observer && observer->shouldPause()) {
-            // Sync data before pausing (Windows-style behavior)
-            performSyncOperation(destFd, dest);
-            close(destFd);
-            observer->waitWhilePaused();
+    qint64 copied = 0;
+    bool success = true;
+    bool directModeActive = (writer.mode == WriteMode::Direct);
+    directModeSwitched = false;
 
-            // Reopen with the same flags as before
-            if (usingDirect) {
-                destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0666);
-            } else {
-                destFd = open(dest.toLocal8Bit().constData(), O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0666);
+    while (copied < totalSize && (!observer || !observer->shouldStop())) {
+        // Handle pause/resume
+        if (observer && observer->shouldPause()) {
+            FileWriter writerCopy = writer;   // Create a copy for modification
+            if (!handlePauseResume(writerCopy, dest, observer)) {
+                success = false;
+                break;
             }
-            if (destFd < 0) {
-                free(buffer);
-                close(srcFd);
-                return false;
+            // After resume, need to seek source file to correct position
+            if (lseek(srcFd, copied, SEEK_SET) < 0) {
+                qDebug() << "Failed to seek source file after resume:" << strerror(errno);
+                success = false;
+                break;
             }
+            // Update writer with the reopened file descriptor
+            writer = writerCopy;
         }
 
         if (observer && observer->shouldStop()) {
+            success = false;
             break;
         }
 
@@ -349,35 +428,31 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
         qint64 toRead = qMin(chunkSize, remaining);
 
         // For O_DIRECT, ensure read size is aligned (except for the very last read)
-        if (usingDirect && toRead < chunkSize && toRead % alignment != 0) {
-            // Last chunk and not aligned - align up to read more, but only write what's needed
-            toRead = ((toRead + alignment - 1) / alignment) * alignment;
-            toRead = qMin(toRead, remaining);   // Don't read beyond file
+        if (writer.mode == WriteMode::Direct && toRead < chunkSize && toRead % writer.alignment != 0) {
+            toRead = ((toRead + writer.alignment - 1) / writer.alignment) * writer.alignment;
+            toRead = qMin(toRead, remaining);
         }
 
         ssize_t bytesRead = read(srcFd, buffer, toRead);
-
         if (bytesRead < 0) {
             if (errno == EINTR) {
-                continue;   // Interrupted, try again
+                continue;
             }
-            close(srcFd);
-            close(destFd);
-            unlink(dest.toLocal8Bit().constData());
-            free(buffer);
-            return false;
+            success = false;
+            break;
         }
 
         if (bytesRead == 0) {
             break;   // EOF
         }
 
-        // Only write the actual bytes we need (not the aligned read size)
+        // Only write the actual bytes we need
         qint64 actualBytesToWrite = qMin((qint64)bytesRead, totalSize - copied);
 
         ssize_t bytesWritten = 0;
+
         while (bytesWritten < actualBytesToWrite && (!observer || !observer->shouldStop())) {
-            ssize_t written = write(destFd, buffer + bytesWritten,
+            ssize_t written = write(writer.fd, buffer + bytesWritten,
                                     actualBytesToWrite - bytesWritten);
             if (written < 0) {
                 if (errno == EINTR) {
@@ -386,29 +461,31 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
 
                 // dd-style fallback: If O_DIRECT write fails due to alignment issues,
                 // dynamically remove O_DIRECT flag and continue with regular I/O
-                if (usingDirect && errno == EINVAL) {
+                if (directModeActive && errno == EINVAL) {
                     qDebug() << "O_DIRECT write failed (alignment issue), removing O_DIRECT flag for:" << dest;
 
                     // Get current flags and remove O_DIRECT
-                    int flags = fcntl(destFd, F_GETFL);
+                    int flags = fcntl(writer.fd, F_GETFL);
                     if (flags != -1) {
                         flags &= ~O_DIRECT;
-                        if (fcntl(destFd, F_SETFL, flags) == 0) {
-                            usingDirect = false;
+                        if (fcntl(writer.fd, F_SETFL, flags) == 0) {
+                            directModeActive = false;
+                            directModeSwitched = true;
                             qDebug() << "Successfully removed O_DIRECT, continuing with regular I/O";
                             continue;   // Retry the write without O_DIRECT
                         }
                     }
                 }
 
-                perror("WRITE ERROR:");
-                close(srcFd);
-                close(destFd);
-                unlink(dest.toLocal8Bit().constData());
-                free(buffer);
-                return false;
+                perror("Copy error!!");
+                success = false;
+                break;
             }
             bytesWritten += written;
+        }
+
+        if (!success) {
+            break;
         }
 
         copied += actualBytesToWrite;
@@ -420,24 +497,41 @@ bool SyncCopyAlgorithm::copyFileChunked(const QString &source, const QString &de
         }
     }
 
-    close(srcFd);
+    free(buffer);
 
-    // dd-style: If we removed O_DIRECT during copy, ensure data is synced to disk
-    if (!usingDirect) {
-        qDebug() << "Syncing data to disk (fsync) for:" << dest;
-        if (fsync(destFd) != 0) {
-            qDebug() << "fsync failed:" << strerror(errno);
-        }
-
-        // dd also uses fadvise to drop cache
-        if (posix_fadvise(destFd, 0, 0, POSIX_FADV_DONTNEED) != 0) {
-            qDebug() << "posix_fadvise failed:" << strerror(errno);
-        }
+    // Clean up on failure
+    if (!success) {
+        unlink(dest.toLocal8Bit().constData());
     }
 
-    close(destFd);
-    free(buffer);
-    return (!observer || !observer->shouldStop()) && copied == totalSize;
+    return success && (!observer || !observer->shouldStop()) && copied == totalSize;
+}
+
+char *SyncCopyAlgorithm::allocateAlignedBuffer(size_t size, size_t alignment)
+{
+    char *buffer = nullptr;
+    if (posix_memalign((void **)&buffer, alignment, size) != 0) {
+        return nullptr;
+    }
+    return buffer;
+}
+
+bool SyncCopyAlgorithm::handlePauseResume(FileWriter &writer, const QString &dest, ProgressObserver *observer)
+{
+    // Sync data before pausing (Windows-style behavior)
+    performSyncOperation(writer.fd, dest);
+    close(writer.fd);
+
+    observer->waitWhilePaused();
+
+    // Reopen for resume (append mode, not truncate)
+    FileWriter newWriter = reopenDestinationFileForResume(dest, writer.mode);
+    if (newWriter.fd < 0) {
+        return false;
+    }
+
+    writer = newWriter;
+    return true;
 }
 
 bool SyncCopyAlgorithm::shouldFallback(int errorCode) const
@@ -453,7 +547,7 @@ bool SyncCopyAlgorithm::copyDirectoryRecursive(const QString &source, const QStr
                                                ProgressObserver *observer)
 {
     QDir sourceDir(source);
-    QFileInfoList entries = sourceDir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+    QFileInfoList entries = sourceDir.entryInfoList(QDir::Files | QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot);
 
     for (const QFileInfo &entry : entries) {
         if (isCancelled()) {
