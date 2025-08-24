@@ -24,6 +24,8 @@ ContextMenuController::ContextMenuController(QObject* parent)
     , m_sortingActionGroup(nullptr)
     , m_currentSortingType("name")
     , m_currentSortingAscending(true)
+    , m_currentGroupingType("none")
+    , m_currentGroupingAscending(true)
 {
     createActions();
 }
@@ -39,6 +41,12 @@ void ContextMenuController::updateCurrentSortingState(const QString& sortingType
     m_currentSortingType = sortingType;
     m_currentSortingAscending = ascending;
     updateSortingActions();
+}
+
+void ContextMenuController::updateCurrentGroupingState(const QString& groupingType, bool ascending) {
+    m_currentGroupingType = groupingType;
+    m_currentGroupingAscending = ascending;
+    updateGroupingActions();
 }
 
 void ContextMenuController::showContextMenu(const QPoint& globalPos, const QModelIndex& index) {
@@ -80,9 +88,22 @@ void ContextMenuController::onGroupingTriggered() {
         return;
     }
     
-    QString groupingType = action->data().toString();
+    QString groupingData = action->data().toString();
+    
+    QString groupingType;
+    bool ascending = true;
+    
+    if (groupingData == "none") {
+        groupingType = "none";
+    } else if (groupingData.endsWith("_asc") || groupingData.endsWith("_desc")) {
+        ascending = groupingData.endsWith("_asc");
+        groupingType = groupingData.left(groupingData.lastIndexOf("_"));
+    } else {
+        return; // Invalid format
+    }
     
     std::unique_ptr<GroupingStrategy> strategy;
+    GroupingStrategy::GroupOrder order = ascending ? GroupingStrategy::GroupOrder::Ascending : GroupingStrategy::GroupOrder::Descending;
     
     if (groupingType == "none") {
         strategy = std::make_unique<NoGroupingStrategy>();
@@ -99,8 +120,18 @@ void ContextMenuController::onGroupingTriggered() {
     }
     
     if (strategy) {
-        m_model->setGroupingStrategy(std::move(strategy));
-        emit groupingChanged(groupingType);
+        m_currentGroupingType = groupingType;
+        m_currentGroupingAscending = ascending;
+        
+        if (groupingType == "none") {
+            m_model->setGroupingStrategy(std::move(strategy));
+        } else {
+            m_model->setGroupingStrategy(std::move(strategy), order);
+        }
+        
+        // Emit both signals for compatibility
+        emit groupingChanged(groupingType);  // For main window combobox sync
+        emit groupOrderChanged(groupingType, ascending);  // For detailed state tracking
     }
 }
 
@@ -187,43 +218,78 @@ void ContextMenuController::createGroupingMenu() {
     m_groupingMenu->addSeparator();
     
     // Type grouping
-    QAction* typeAction = new QAction(tr("Type"), this);
-    typeAction->setCheckable(true);
-    typeAction->setData("type");
-    m_groupingActionGroup->addAction(typeAction);
-    m_groupingMenu->addAction(typeAction);
-    connect(typeAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    QAction* typeAscAction = new QAction(tr("Type (Ascending)"), this);
+    typeAscAction->setCheckable(true);
+    typeAscAction->setData("type_asc");
+    m_groupingActionGroup->addAction(typeAscAction);
+    m_groupingMenu->addAction(typeAscAction);
+    connect(typeAscAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    
+    QAction* typeDescAction = new QAction(tr("Type (Descending)"), this);
+    typeDescAction->setCheckable(true);
+    typeDescAction->setData("type_desc");
+    m_groupingActionGroup->addAction(typeDescAction);
+    m_groupingMenu->addAction(typeDescAction);
+    connect(typeDescAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
     
     // Time groupings
-    QAction* modTimeAction = new QAction(tr("Modification Time"), this);
-    modTimeAction->setCheckable(true);
-    modTimeAction->setData("modification_time");
-    m_groupingActionGroup->addAction(modTimeAction);
-    m_groupingMenu->addAction(modTimeAction);
-    connect(modTimeAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    QAction* modTimeAscAction = new QAction(tr("Modification Time (Today → Earlier)"), this);
+    modTimeAscAction->setCheckable(true);
+    modTimeAscAction->setData("modification_time_asc");
+    m_groupingActionGroup->addAction(modTimeAscAction);
+    m_groupingMenu->addAction(modTimeAscAction);
+    connect(modTimeAscAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
     
-    QAction* createTimeAction = new QAction(tr("Creation Time"), this);
-    createTimeAction->setCheckable(true);
-    createTimeAction->setData("creation_time");
-    m_groupingActionGroup->addAction(createTimeAction);
-    m_groupingMenu->addAction(createTimeAction);
-    connect(createTimeAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    QAction* modTimeDescAction = new QAction(tr("Modification Time (Earlier → Today)"), this);
+    modTimeDescAction->setCheckable(true);
+    modTimeDescAction->setData("modification_time_desc");
+    m_groupingActionGroup->addAction(modTimeDescAction);
+    m_groupingMenu->addAction(modTimeDescAction);
+    connect(modTimeDescAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    
+    QAction* createTimeAscAction = new QAction(tr("Creation Time (Today → Earlier)"), this);
+    createTimeAscAction->setCheckable(true);
+    createTimeAscAction->setData("creation_time_asc");
+    m_groupingActionGroup->addAction(createTimeAscAction);
+    m_groupingMenu->addAction(createTimeAscAction);
+    connect(createTimeAscAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    
+    QAction* createTimeDescAction = new QAction(tr("Creation Time (Earlier → Today)"), this);
+    createTimeDescAction->setCheckable(true);
+    createTimeDescAction->setData("creation_time_desc");
+    m_groupingActionGroup->addAction(createTimeDescAction);
+    m_groupingMenu->addAction(createTimeDescAction);
+    connect(createTimeDescAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
     
     // Name grouping
-    QAction* nameAction = new QAction(tr("Name"), this);
-    nameAction->setCheckable(true);
-    nameAction->setData("name");
-    m_groupingActionGroup->addAction(nameAction);
-    m_groupingMenu->addAction(nameAction);
-    connect(nameAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    QAction* nameAscAction = new QAction(tr("Name (0-9 → Other)"), this);
+    nameAscAction->setCheckable(true);
+    nameAscAction->setData("name_asc");
+    m_groupingActionGroup->addAction(nameAscAction);
+    m_groupingMenu->addAction(nameAscAction);
+    connect(nameAscAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    
+    QAction* nameDescAction = new QAction(tr("Name (Other → 0-9)"), this);
+    nameDescAction->setCheckable(true);
+    nameDescAction->setData("name_desc");
+    m_groupingActionGroup->addAction(nameDescAction);
+    m_groupingMenu->addAction(nameDescAction);
+    connect(nameDescAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
     
     // Size grouping
-    QAction* sizeAction = new QAction(tr("Size"), this);
-    sizeAction->setCheckable(true);
-    sizeAction->setData("size");
-    m_groupingActionGroup->addAction(sizeAction);
-    m_groupingMenu->addAction(sizeAction);
-    connect(sizeAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    QAction* sizeAscAction = new QAction(tr("Size (Unknown → Massive)"), this);
+    sizeAscAction->setCheckable(true);
+    sizeAscAction->setData("size_asc");
+    m_groupingActionGroup->addAction(sizeAscAction);
+    m_groupingMenu->addAction(sizeAscAction);
+    connect(sizeAscAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
+    
+    QAction* sizeDescAction = new QAction(tr("Size (Massive → Unknown)"), this);
+    sizeDescAction->setCheckable(true);
+    sizeDescAction->setData("size_desc");
+    m_groupingActionGroup->addAction(sizeDescAction);
+    m_groupingMenu->addAction(sizeDescAction);
+    connect(sizeDescAction, &QAction::triggered, this, &ContextMenuController::onGroupingTriggered);
 }
 
 void ContextMenuController::createSortingMenu() {
@@ -352,28 +418,18 @@ void ContextMenuController::updateGroupingActions() {
         return;
     }
     
-    // Get current grouping strategy name
-    QString currentStrategy = "none"; // Default
-    if (m_model->groupingStrategy()) {
-        QString strategyName = m_model->groupingStrategy()->getStrategyName().toLower();
-        
-        if (strategyName == "type") {
-            currentStrategy = "type";
-        } else if (strategyName == "modification time") {
-            currentStrategy = "modification_time";
-        } else if (strategyName == "creation time") {
-            currentStrategy = "creation_time";
-        } else if (strategyName == "name") {
-            currentStrategy = "name";
-        } else if (strategyName == "size") {
-            currentStrategy = "size";
-        }
+    // Construct the current grouping data string
+    QString currentGroupingData;
+    if (m_currentGroupingType == "none") {
+        currentGroupingData = "none";
+    } else {
+        currentGroupingData = m_currentGroupingType + "_" + (m_currentGroupingAscending ? "asc" : "desc");
     }
     
     // Update checked state
     for (QAction* action : m_groupingActionGroup->actions()) {
         QString actionData = action->data().toString();
-        action->setChecked(actionData == currentStrategy);
+        action->setChecked(actionData == currentGroupingData);
     }
 } 
 

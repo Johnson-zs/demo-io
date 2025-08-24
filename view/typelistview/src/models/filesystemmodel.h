@@ -61,11 +61,14 @@ public:
 
     // Grouping and sorting
     void setGroupingStrategy(std::unique_ptr<GroupingStrategy> strategy);
+    void setGroupingStrategy(std::unique_ptr<GroupingStrategy> strategy, GroupingStrategy::GroupOrder groupOrder);
     void setSortingStrategy(std::unique_ptr<SortingStrategy> strategy, SortingStrategy::SortOrder order = SortingStrategy::SortOrder::Ascending);
+    void setGroupOrder(GroupingStrategy::GroupOrder groupOrder);
     
     GroupingStrategy* groupingStrategy() const { return m_groupingStrategy.get(); }
     SortingStrategy* sortingStrategy() const { return m_sortingStrategy.get(); }
     SortingStrategy::SortOrder sortOrder() const { return m_sortOrder; }
+    GroupingStrategy::GroupOrder groupOrder() const { return m_groupOrder; }
 
     // Group operations
     void toggleGroupExpansion(const QString& groupName);
@@ -106,6 +109,7 @@ private:
     std::unique_ptr<GroupingStrategy> m_groupingStrategy;
     std::unique_ptr<SortingStrategy> m_sortingStrategy;
     SortingStrategy::SortOrder m_sortOrder;
+    GroupingStrategy::GroupOrder m_groupOrder;
     
     // File system monitoring
     QFileSystemWatcher* m_watcher;

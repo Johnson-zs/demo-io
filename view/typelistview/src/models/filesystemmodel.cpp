@@ -12,6 +12,7 @@ FileSystemModel::FileSystemModel(QObject* parent)
     , m_groupingStrategy(std::make_unique<NoGroupingStrategy>())
     , m_sortingStrategy(std::make_unique<NameSortingStrategy>())
     , m_sortOrder(SortingStrategy::SortOrder::Ascending)
+    , m_groupOrder(GroupingStrategy::GroupOrder::Ascending)
     , m_watcher(new QFileSystemWatcher(this))
     , m_iconProvider(new QFileIconProvider())
 {
@@ -228,6 +229,27 @@ void FileSystemModel::setGroupingStrategy(std::unique_ptr<GroupingStrategy> stra
     endResetModel();
 }
 
+void FileSystemModel::setGroupingStrategy(std::unique_ptr<GroupingStrategy> strategy, GroupingStrategy::GroupOrder groupOrder) {
+    if (!strategy) {
+        return;
+    }
+    
+    beginResetModel();
+    m_groupingStrategy = std::move(strategy);
+    m_groupOrder = groupOrder;
+    organizeFiles();
+    endResetModel();
+}
+
+void FileSystemModel::setGroupOrder(GroupingStrategy::GroupOrder groupOrder) {
+    if (m_groupOrder != groupOrder) {
+        beginResetModel();
+        m_groupOrder = groupOrder;
+        organizeFiles();
+        endResetModel();
+    }
+}
+
 void FileSystemModel::setSortingStrategy(std::unique_ptr<SortingStrategy> strategy, SortingStrategy::SortOrder order) {
     if (!strategy) {
         return;
@@ -408,7 +430,7 @@ void FileSystemModel::applyGrouping(const QList<FileItem>& files) {
         }
         
         if (!groupMap.contains(groupName)) {
-            int order = m_groupingStrategy->getGroupDisplayOrder(groupName);
+            int order = m_groupingStrategy->getGroupDisplayOrder(groupName, m_groupOrder);
             groupMap[groupName] = GroupInfo(groupName, order);
         }
         
@@ -481,4 +503,4 @@ const FileSystemModel::ModelItem& FileSystemModel::getModelItem(int index) const
         return invalidItem;
     }
     return m_modelItems[index];
-} 
+}

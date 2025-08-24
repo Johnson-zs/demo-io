@@ -109,9 +109,22 @@ void MainWindow::onGroupingChanged() {
         return;
     }
     
-    QString groupingType = m_groupingCombo->currentData().toString();
+    QString groupingData = m_groupingCombo->currentData().toString();
+    
+    QString groupingType;
+    bool ascending = true;
+    
+    if (groupingData == "none") {
+        groupingType = "none";
+    } else if (groupingData.endsWith("_asc") || groupingData.endsWith("_desc")) {
+        ascending = groupingData.endsWith("_asc");
+        groupingType = groupingData.left(groupingData.lastIndexOf("_"));
+    } else {
+        return; // Invalid format
+    }
     
     std::unique_ptr<GroupingStrategy> strategy;
+    GroupingStrategy::GroupOrder order = ascending ? GroupingStrategy::GroupOrder::Ascending : GroupingStrategy::GroupOrder::Descending;
     
     if (groupingType == "none") {
         strategy = std::make_unique<NoGroupingStrategy>();
@@ -128,7 +141,14 @@ void MainWindow::onGroupingChanged() {
     }
     
     if (strategy) {
-        m_model->setGroupingStrategy(std::move(strategy));
+        if (groupingType == "none") {
+            m_model->setGroupingStrategy(std::move(strategy));
+        } else {
+            m_model->setGroupingStrategy(std::move(strategy), order);
+        }
+        
+        // Update context menu controller state
+        m_contextMenuController->updateCurrentGroupingState(groupingType, ascending);
     }
 }
 
@@ -159,7 +179,7 @@ void MainWindow::setupUI() {
     // Set window properties
     setWindowTitle(tr("File Browser"));
     setMinimumSize(800, 600);
-    resize(1000, 700);
+    resize(1200, 700);
 }
 
 void MainWindow::setupToolBar() {
@@ -224,11 +244,28 @@ void MainWindow::setupToolBar() {
     m_toolBar->addWidget(new QLabel(tr("Group:")));
     m_groupingCombo = new QComboBox(this);
     m_groupingCombo->addItem(tr("None"), "none");
-    m_groupingCombo->addItem(tr("Type"), "type");
-    m_groupingCombo->addItem(tr("Modification Time"), "modification_time");
-    m_groupingCombo->addItem(tr("Creation Time"), "creation_time");
-    m_groupingCombo->addItem(tr("Name"), "name");
-    m_groupingCombo->addItem(tr("Size"), "size");
+    m_groupingCombo->insertSeparator(1);
+    
+    // Type grouping
+    m_groupingCombo->addItem(tr("Type (Ascending)"), "type_asc");
+    m_groupingCombo->addItem(tr("Type (Descending)"), "type_desc");
+    m_groupingCombo->insertSeparator(4);
+    
+    // Time grouping
+    m_groupingCombo->addItem(tr("Modification Time (Today → Earlier)"), "modification_time_asc");
+    m_groupingCombo->addItem(tr("Modification Time (Earlier → Today)"), "modification_time_desc");
+    m_groupingCombo->addItem(tr("Creation Time (Today → Earlier)"), "creation_time_asc");
+    m_groupingCombo->addItem(tr("Creation Time (Earlier → Today)"), "creation_time_desc");
+    m_groupingCombo->insertSeparator(9);
+    
+    // Name grouping
+    m_groupingCombo->addItem(tr("Name (0-9 → Other)"), "name_asc");
+    m_groupingCombo->addItem(tr("Name (Other → 0-9)"), "name_desc");
+    
+    // Size grouping
+    m_groupingCombo->addItem(tr("Size (Unknown → Massive)"), "size_asc");
+    m_groupingCombo->addItem(tr("Size (Massive → Unknown)"), "size_desc");
+    
     m_groupingCombo->setCurrentIndex(0);
     m_toolBar->addWidget(m_groupingCombo);
     
@@ -312,13 +349,29 @@ void MainWindow::setupConnections() {
                 }
             });
     
-    connect(m_contextMenuController, &ContextMenuController::groupingChanged,
-            this, [this](const QString& groupingType) {
+    connect(m_contextMenuController, &ContextMenuController::groupOrderChanged,
+            this, [this](const QString& groupingType, bool ascending) {
                 // Update combo box to match context menu selection
-                int index = m_groupingCombo->findData(groupingType);
-                if (index >= 0) {
-                    m_groupingCombo->setCurrentIndex(index);
+                QString groupingData;
+                if (groupingType == "none") {
+                    groupingData = "none";
+                } else {
+                    groupingData = groupingType + "_" + (ascending ? "asc" : "desc");
                 }
+                
+                int index = m_groupingCombo->findData(groupingData);
+                if (index >= 0) {
+                    // Temporarily disconnect to avoid recursive calls
+                    m_groupingCombo->blockSignals(true);
+                    m_groupingCombo->setCurrentIndex(index);
+                    m_groupingCombo->blockSignals(false);
+                }
+            });
+    
+    connect(m_contextMenuController, &ContextMenuController::groupOrderChanged,
+            this, [this](const QString& groupingType, bool ascending) {
+                // Update the context menu controller's internal state
+                m_contextMenuController->updateCurrentGroupingState(groupingType, ascending);
             });
     
     connect(m_contextMenuController, &ContextMenuController::sortingChanged,

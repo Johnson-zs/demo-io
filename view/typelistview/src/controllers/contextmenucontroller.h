@@ -26,11 +26,13 @@ public:
     void setModel(FileSystemModel* model);
     void showContextMenu(const QPoint& globalPos, const QModelIndex& index);
     void updateCurrentSortingState(const QString& sortingType, bool ascending);
+    void updateCurrentGroupingState(const QString& groupingType, bool ascending);
 
 signals:
     void refreshRequested();
     void openRequested();
     void groupingChanged(const QString& groupingType);
+    void groupOrderChanged(const QString& groupingType, bool ascending);
     void sortingChanged(const QString& sortingType, bool ascending);
 
 private slots:
@@ -70,6 +72,10 @@ private:
     QActionGroup* m_sortingActionGroup;
     QString m_currentSortingType;
     bool m_currentSortingAscending;
+    
+    // Grouping state
+    QString m_currentGroupingType;
+    bool m_currentGroupingAscending;
 };
 
 #endif // CONTEXTMENUCONTROLLER_H 

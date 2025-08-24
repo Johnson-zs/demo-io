@@ -16,6 +16,8 @@
  */
 class GroupingStrategy {
 public:
+    enum class GroupOrder { Ascending, Descending };
+
     virtual ~GroupingStrategy() = default;
     
     /**
@@ -27,9 +29,16 @@ public:
     
     /**
      * @brief Get the ordered list of all possible group names
+     * @param order Group ordering (ascending or descending)
      * @return List of group names in display order
      */
-    virtual QStringList getGroupOrder() const = 0;
+    virtual QStringList getGroupOrder(GroupOrder order = GroupOrder::Ascending) const = 0;
+    
+    /**
+     * @brief Get the ordered list of all possible group names (backward compatibility)
+     * @return List of group names in ascending order
+     */
+    QStringList getGroupOrder() const { return getGroupOrder(GroupOrder::Ascending); }
     
     /**
      * @brief Check if a group should be visible
@@ -48,9 +57,17 @@ public:
     /**
      * @brief Get the display order for a group
      * @param groupName The group name
+     * @param order Group ordering (ascending or descending)
      * @return Display order (lower numbers appear first)
      */
-    virtual int getGroupDisplayOrder(const QString& groupName) const;
+    virtual int getGroupDisplayOrder(const QString& groupName, GroupOrder order = GroupOrder::Ascending) const;
+    
+    /**
+     * @brief Get the display order for a group (backward compatibility)
+     * @param groupName The group name
+     * @return Display order in ascending order
+     */
+    int getGroupDisplayOrder(const QString& groupName) const { return getGroupDisplayOrder(groupName, GroupOrder::Ascending); }
 };
 
 /**
@@ -59,7 +76,7 @@ public:
 class NoGroupingStrategy : public GroupingStrategy {
 public:
     QString getGroupName(const FileItem& item) const override;
-    QStringList getGroupOrder() const override;
+    QStringList getGroupOrder(GroupOrder order = GroupOrder::Ascending) const override;
     bool isGroupVisible(const QString& groupName, const QList<FileItem>& items) const override;
     QString getStrategyName() const override;
 };
@@ -70,10 +87,10 @@ public:
 class TypeGroupingStrategy : public GroupingStrategy {
 public:
     QString getGroupName(const FileItem& item) const override;
-    QStringList getGroupOrder() const override;
+    QStringList getGroupOrder(GroupOrder order = GroupOrder::Ascending) const override;
     bool isGroupVisible(const QString& groupName, const QList<FileItem>& items) const override;
     QString getStrategyName() const override;
-    int getGroupDisplayOrder(const QString& groupName) const override;
+    int getGroupDisplayOrder(const QString& groupName, GroupOrder order = GroupOrder::Ascending) const override;
 
 private:
     QString getTypeFromMimeType(const QString& mimeType, bool isDirectory) const;
@@ -89,10 +106,10 @@ public:
     explicit TimeGroupingStrategy(TimeType timeType = ModificationTime);
     
     QString getGroupName(const FileItem& item) const override;
-    QStringList getGroupOrder() const override;
+    QStringList getGroupOrder(GroupOrder order = GroupOrder::Ascending) const override;
     bool isGroupVisible(const QString& groupName, const QList<FileItem>& items) const override;
     QString getStrategyName() const override;
-    int getGroupDisplayOrder(const QString& groupName) const override;
+    int getGroupDisplayOrder(const QString& groupName, GroupOrder order = GroupOrder::Ascending) const override;
 
 private:
     TimeType m_timeType;
@@ -105,10 +122,10 @@ private:
 class NameGroupingStrategy : public GroupingStrategy {
 public:
     QString getGroupName(const FileItem& item) const override;
-    QStringList getGroupOrder() const override;
+    QStringList getGroupOrder(GroupOrder order = GroupOrder::Ascending) const override;
     bool isGroupVisible(const QString& groupName, const QList<FileItem>& items) const override;
     QString getStrategyName() const override;
-    int getGroupDisplayOrder(const QString& groupName) const override;
+    int getGroupDisplayOrder(const QString& groupName, GroupOrder order = GroupOrder::Ascending) const override;
 
 private:
     QString getNameGroup(const QString& name) const;
@@ -122,10 +139,10 @@ private:
 class SizeGroupingStrategy : public GroupingStrategy {
 public:
     QString getGroupName(const FileItem& item) const override;
-    QStringList getGroupOrder() const override;
+    QStringList getGroupOrder(GroupOrder order = GroupOrder::Ascending) const override;
     bool isGroupVisible(const QString& groupName, const QList<FileItem>& items) const override;
     QString getStrategyName() const override;
-    int getGroupDisplayOrder(const QString& groupName) const override;
+    int getGroupDisplayOrder(const QString& groupName, GroupOrder order = GroupOrder::Ascending) const override;
 
 private:
     QString getSizeGroup(qint64 size, bool isDirectory) const;

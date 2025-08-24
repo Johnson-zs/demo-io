@@ -4,11 +4,12 @@
 #include <QMimeType>
 #include <QDateTime>
 #include <QLocale>
+#include <algorithm>
 
 // Base GroupingStrategy implementation
-int GroupingStrategy::getGroupDisplayOrder(const QString& groupName) const {
-    QStringList order = getGroupOrder();
-    int index = order.indexOf(groupName);
+int GroupingStrategy::getGroupDisplayOrder(const QString& groupName, GroupOrder order) const {
+    QStringList orderList = getGroupOrder(order);
+    int index = orderList.indexOf(groupName);
     return index >= 0 ? index : 999; // Unknown groups go to the end
 }
 
@@ -18,7 +19,8 @@ QString NoGroupingStrategy::getGroupName(const FileItem& item) const {
     return QString(); // No grouping
 }
 
-QStringList NoGroupingStrategy::getGroupOrder() const {
+QStringList NoGroupingStrategy::getGroupOrder(GroupOrder order) const {
+    Q_UNUSED(order)
     return QStringList(); // No groups
 }
 
@@ -36,8 +38,8 @@ QString TypeGroupingStrategy::getGroupName(const FileItem& item) const {
     return getTypeFromMimeType(item.type, item.isDirectory);
 }
 
-QStringList TypeGroupingStrategy::getGroupOrder() const {
-    return QStringList{
+QStringList TypeGroupingStrategy::getGroupOrder(GroupOrder order) const {
+    QStringList baseOrder{
         QObject::tr("Directory"),
         QObject::tr("Document"),
         QObject::tr("Image"),
@@ -48,6 +50,12 @@ QStringList TypeGroupingStrategy::getGroupOrder() const {
         QObject::tr("Executable"),
         QObject::tr("Unknown")
     };
+    
+    if (order == GroupOrder::Descending) {
+        std::reverse(baseOrder.begin(), baseOrder.end());
+    }
+    
+    return baseOrder;
 }
 
 bool TypeGroupingStrategy::isGroupVisible(const QString& groupName, const QList<FileItem>& items) const {
@@ -59,9 +67,9 @@ QString TypeGroupingStrategy::getStrategyName() const {
     return QObject::tr("Type");
 }
 
-int TypeGroupingStrategy::getGroupDisplayOrder(const QString& groupName) const {
-    QStringList order = getGroupOrder();
-    int index = order.indexOf(groupName);
+int TypeGroupingStrategy::getGroupDisplayOrder(const QString& groupName, GroupOrder order) const {
+    QStringList orderList = getGroupOrder(order);
+    int index = orderList.indexOf(groupName);
     return index >= 0 ? index : 999;
 }
 
@@ -120,8 +128,8 @@ QString TimeGroupingStrategy::getGroupName(const FileItem& item) const {
     return getTimeGroupName(dateTime);
 }
 
-QStringList TimeGroupingStrategy::getGroupOrder() const {
-    return QStringList{
+QStringList TimeGroupingStrategy::getGroupOrder(GroupOrder order) const {
+    QStringList baseOrder{
         QObject::tr("Today"),
         QObject::tr("Yesterday"),
         QObject::tr("Past 7 days"),
@@ -134,6 +142,12 @@ QStringList TimeGroupingStrategy::getGroupOrder() const {
         QObject::tr("2021"), QObject::tr("2020"),
         QObject::tr("Earlier")
     };
+    
+    if (order == GroupOrder::Descending) {
+        std::reverse(baseOrder.begin(), baseOrder.end());
+    }
+    
+    return baseOrder;
 }
 
 bool TimeGroupingStrategy::isGroupVisible(const QString& groupName, const QList<FileItem>& items) const {
@@ -146,9 +160,9 @@ QString TimeGroupingStrategy::getStrategyName() const {
         QObject::tr("Modification Time") : QObject::tr("Creation Time");
 }
 
-int TimeGroupingStrategy::getGroupDisplayOrder(const QString& groupName) const {
-    QStringList order = getGroupOrder();
-    int index = order.indexOf(groupName);
+int TimeGroupingStrategy::getGroupDisplayOrder(const QString& groupName, GroupOrder order) const {
+    QStringList orderList = getGroupOrder(order);
+    int index = orderList.indexOf(groupName);
     return index >= 0 ? index : 999;
 }
 
@@ -208,8 +222,8 @@ QString NameGroupingStrategy::getGroupName(const FileItem& item) const {
     return getNameGroup(item.name);
 }
 
-QStringList NameGroupingStrategy::getGroupOrder() const {
-    return QStringList{
+QStringList NameGroupingStrategy::getGroupOrder(GroupOrder order) const {
+    QStringList baseOrder{
         QObject::tr("0-9"),
         QObject::tr("A-H"),
         QObject::tr("I-P"),
@@ -219,6 +233,12 @@ QStringList NameGroupingStrategy::getGroupOrder() const {
         QObject::tr("Pinyin Q-Z"),
         QObject::tr("Other")
     };
+    
+    if (order == GroupOrder::Descending) {
+        std::reverse(baseOrder.begin(), baseOrder.end());
+    }
+    
+    return baseOrder;
 }
 
 bool NameGroupingStrategy::isGroupVisible(const QString& groupName, const QList<FileItem>& items) const {
@@ -230,9 +250,9 @@ QString NameGroupingStrategy::getStrategyName() const {
     return QObject::tr("Name");
 }
 
-int NameGroupingStrategy::getGroupDisplayOrder(const QString& groupName) const {
-    QStringList order = getGroupOrder();
-    int index = order.indexOf(groupName);
+int NameGroupingStrategy::getGroupDisplayOrder(const QString& groupName, GroupOrder order) const {
+    QStringList orderList = getGroupOrder(order);
+    int index = orderList.indexOf(groupName);
     return index >= 0 ? index : 999;
 }
 
@@ -299,8 +319,8 @@ QString SizeGroupingStrategy::getGroupName(const FileItem& item) const {
     return getSizeGroup(item.size, item.isDirectory);
 }
 
-QStringList SizeGroupingStrategy::getGroupOrder() const {
-    return QStringList{
+QStringList SizeGroupingStrategy::getGroupOrder(GroupOrder order) const {
+    QStringList baseOrder{
         QObject::tr("Unknown"),
         QObject::tr("Empty"),
         QObject::tr("Tiny"),
@@ -310,6 +330,12 @@ QStringList SizeGroupingStrategy::getGroupOrder() const {
         QObject::tr("Huge"),
         QObject::tr("Massive")
     };
+    
+    if (order == GroupOrder::Descending) {
+        std::reverse(baseOrder.begin(), baseOrder.end());
+    }
+    
+    return baseOrder;
 }
 
 bool SizeGroupingStrategy::isGroupVisible(const QString& groupName, const QList<FileItem>& items) const {
@@ -321,9 +347,9 @@ QString SizeGroupingStrategy::getStrategyName() const {
     return QObject::tr("Size");
 }
 
-int SizeGroupingStrategy::getGroupDisplayOrder(const QString& groupName) const {
-    QStringList order = getGroupOrder();
-    int index = order.indexOf(groupName);
+int SizeGroupingStrategy::getGroupDisplayOrder(const QString& groupName, GroupOrder order) const {
+    QStringList orderList = getGroupOrder(order);
+    int index = orderList.indexOf(groupName);
     return index >= 0 ? index : 999;
 }
 

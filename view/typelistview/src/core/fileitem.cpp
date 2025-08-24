@@ -115,4 +115,4 @@ QString FileItem::getTypeString() const {
     }
     
     return displayType;
-} 
+}
