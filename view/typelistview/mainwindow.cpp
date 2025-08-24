@@ -341,6 +341,12 @@ void MainWindow::setupConnections() {
                 }
             });
     
+    // Selection change connection
+    connect(m_listView, &FileListView::selectionChanged,
+            this, [this](const QModelIndexList& selected) {
+                updateStatusBar(); // Update status bar to show selection count
+            });
+    
     // Context menu connections
     connect(m_contextMenuController, &ContextMenuController::refreshRequested,
             this, [this]() {
@@ -400,7 +406,7 @@ void MainWindow::updateStatusBar() {
         m_pathLabel->setToolTip(m_currentPath);
     }
     
-    // Update item count
+    // Update item count and selection info
     if (m_itemCountLabel) {
         int totalItems = 0;
         int visibleItems = m_model->rowCount();
@@ -416,11 +422,26 @@ void MainWindow::updateStatusBar() {
             }
         }
         
-        if (totalItems != visibleItems) {
-            m_itemCountLabel->setText(tr("%1 items (%2 visible)").arg(totalItems).arg(visibleItems));
+        // Get selection count
+        int selectedCount = m_listView ? m_listView->selectedIndexes().count() : 0;
+        
+        QString statusText;
+        if (selectedCount > 0) {
+            if (totalItems != visibleItems) {
+                statusText = tr("%1 items (%2 visible), %3 selected")
+                    .arg(totalItems).arg(visibleItems).arg(selectedCount);
+            } else {
+                statusText = tr("%1 items, %2 selected").arg(totalItems).arg(selectedCount);
+            }
         } else {
-            m_itemCountLabel->setText(tr("%1 items").arg(totalItems));
+            if (totalItems != visibleItems) {
+                statusText = tr("%1 items (%2 visible)").arg(totalItems).arg(visibleItems);
+            } else {
+                statusText = tr("%1 items").arg(totalItems);
+            }
         }
+        
+        m_itemCountLabel->setText(statusText);
     }
 }
 

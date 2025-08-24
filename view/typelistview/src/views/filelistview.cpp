@@ -1,5 +1,6 @@
 #include "filelistview.h"
 #include "fileitemdelegate.h"
+#include "selectionmanager.h"
 #include "../models/filesystemmodel.h"
 #include "../controllers/contextmenucontroller.h"
 #include "../core/fileitem.h"
@@ -13,6 +14,7 @@
 #include <QDebug>
 #include <QPainter>
 #include <QStyleOption>
+#include <QRubberBand>
 
 // FileListHeaderView implementation
 FileListHeaderView::FileListHeaderView(Qt::Orientation orientation, QWidget* parent)
@@ -70,8 +72,11 @@ FileListView::FileListView(QWidget* parent)
     , m_listView(nullptr)
     , m_model(nullptr)
     , m_contextMenuController(nullptr)
+    , m_selectionManager(nullptr)
     , m_currentSortOrder(Qt::AscendingOrder)
     , m_currentSortColumn(0)
+    , m_rubberBand(nullptr)
+    , m_rubberBandActive(false)
 {
     setupView();
 }
@@ -92,6 +97,7 @@ void FileListView::setupView() {
     m_listView = new QListView(this);
     m_listView->setAlternatingRowColors(true);
     m_listView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_listView->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_listView->setUniformItemSizes(false);
     m_listView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_listView->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -100,6 +106,12 @@ void FileListView::setupView() {
     FileItemDelegate* delegate = new FileItemDelegate(this);
     delegate->setHeaderView(m_headerView);
     m_listView->setItemDelegate(delegate);
+    
+    // Create selection manager
+    m_selectionManager = new SelectionManager(this);
+    
+    // Create rubber band for drag selection
+    m_rubberBand = new QRubberBand(QRubberBand::Rectangle, this);
     
     m_layout->addWidget(m_listView);
     
@@ -122,6 +134,18 @@ void FileListView::setupConnections() {
                     m_listView->viewport()->update();
                 }
             });
+    
+    // Connect selection manager signals
+    if (m_selectionManager) {
+        connect(m_selectionManager, &SelectionManager::selectionChanged,
+                this, &FileListView::selectionChanged);
+    }
+    
+    // Connect list view selection model
+    if (m_listView && m_listView->selectionModel()) {
+        connect(m_listView->selectionModel(), &QItemSelectionModel::selectionChanged,
+                this, &FileListView::onSelectionChanged);
+    }
 }
 
 void FileListView::setModel(FileSystemModel* model) {
@@ -133,6 +157,12 @@ void FileListView::setModel(FileSystemModel* model) {
     if (m_headerView && model) {
         // Set the model for the header view
         m_headerView->setModel(model);
+    }
+    
+    if (m_selectionManager && model) {
+        // Initialize selection manager with model and selection model
+        m_selectionManager->setModel(model);
+        m_selectionManager->setSelectionModel(m_listView->selectionModel());
     }
 }
 
@@ -251,4 +281,189 @@ void FileListView::onHeaderSectionClicked(int logicalIndex) {
     // Emit sorting change signal
     bool ascending = (newOrder == Qt::AscendingOrder);
     emit sortingChanged(sortingType, ascending);
+}
+
+// Multi-selection support methods
+QModelIndexList FileListView::selectedIndexes() const {
+    return m_selectionManager ? m_selectionManager->selectedFileIndexes() : QModelIndexList();
+}
+
+void FileListView::selectGroup(const QString& groupName) {
+    if (m_selectionManager) {
+        m_selectionManager->selectGroup(groupName);
+    }
+}
+
+void FileListView::clearSelection() {
+    if (m_selectionManager) {
+        m_selectionManager->clearSelection();
+    }
+}
+
+void FileListView::setSelectionMode(QAbstractItemView::SelectionMode mode) {
+    if (m_listView) {
+        m_listView->setSelectionMode(mode);
+    }
+    
+    if (m_selectionManager) {
+        SelectionManager::SelectionMode managerMode;
+        switch (mode) {
+        case QAbstractItemView::SingleSelection:
+            managerMode = SelectionManager::Single;
+            break;
+        case QAbstractItemView::ExtendedSelection:
+            managerMode = SelectionManager::Extended;
+            break;
+        case QAbstractItemView::MultiSelection:
+            managerMode = SelectionManager::Multi;
+            break;
+        default:
+            managerMode = SelectionManager::Extended;
+            break;
+        }
+        m_selectionManager->setSelectionMode(managerMode);
+    }
+}
+
+void FileListView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        // Check if we clicked on list view area
+        QPoint listViewPos = m_listView->mapFromParent(event->pos());
+        if (m_listView->rect().contains(listViewPos)) {
+            QModelIndex index = m_listView->indexAt(listViewPos);
+            
+            if (index.isValid()) {
+                // Check if it's a group header
+                if (isGroupHeader(index)) {
+                    handleGroupHeaderClick(index);
+                    return;
+                }
+                
+                // Handle file item click with modifiers
+                if (m_selectionManager) {
+                    m_selectionManager->handleClick(index, event->modifiers());
+                }
+            } else {
+                // Clicked on empty area - start rubber band selection
+                if (!(event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier))) {
+                    clearSelection();
+                }
+                
+                m_rubberBandOrigin = event->pos();
+                m_rubberBandActive = true;
+                if (m_rubberBand) {
+                    m_rubberBand->setGeometry(QRect(m_rubberBandOrigin, QSize()));
+                    m_rubberBand->show();
+                }
+            }
+        }
+    }
+    
+    QWidget::mousePressEvent(event);
+}
+
+void FileListView::mouseMoveEvent(QMouseEvent* event) {
+    if (m_rubberBandActive && m_rubberBand) {
+        QRect rect = QRect(m_rubberBandOrigin, event->pos()).normalized();
+        m_rubberBand->setGeometry(rect);
+        updateRubberBandSelection();
+    }
+    
+    QWidget::mouseMoveEvent(event);
+}
+
+void FileListView::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && m_rubberBandActive) {
+        m_rubberBandActive = false;
+        if (m_rubberBand) {
+            m_rubberBand->hide();
+        }
+    }
+    
+    QWidget::mouseReleaseEvent(event);
+}
+
+void FileListView::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_A && event->modifiers() & Qt::ControlModifier) {
+        // Ctrl+A: Select all files
+        if (m_selectionManager && m_model) {
+            QModelIndexList allFileIndexes;
+            for (int i = 0; i < m_model->rowCount(); ++i) {
+                QModelIndex index = m_model->index(i, 0);
+                if (index.isValid() && !m_model->isGroupHeader(index)) {
+                    allFileIndexes.append(index);
+                }
+            }
+            m_selectionManager->selectIndexes(allFileIndexes, true);
+        }
+        event->accept();
+        return;
+    }
+    
+    QWidget::keyPressEvent(event);
+}
+
+void FileListView::onSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected) {
+    Q_UNUSED(selected)
+    Q_UNUSED(deselected)
+    
+    if (m_selectionManager) {
+        emit selectionChanged(m_selectionManager->selectedFileIndexes());
+    }
+}
+
+void FileListView::onGroupHeaderClicked(const QModelIndex& index) {
+    handleGroupHeaderClick(index);
+}
+
+void FileListView::updateRubberBandSelection() {
+    if (!m_rubberBand || !m_selectionManager) {
+        return;
+    }
+    
+    QRect rubberBandRect = m_rubberBand->geometry();
+    QRect listViewRect = m_listView->geometry();
+    
+    // Convert rubber band rect to list view coordinates
+    QRect selectionRect = QRect(
+        rubberBandRect.topLeft() - listViewRect.topLeft(),
+        rubberBandRect.size()
+    );
+    
+    m_selectionManager->selectInRect(selectionRect, m_listView);
+}
+
+QModelIndexList FileListView::getIndexesInRect(const QRect& rect) const {
+    if (!m_model) {
+        return QModelIndexList();
+    }
+    
+    QModelIndexList indexes;
+    for (int i = 0; i < m_model->rowCount(); ++i) {
+        QModelIndex index = m_model->index(i, 0);
+        if (index.isValid()) {
+            QRect itemRect = m_listView->visualRect(index);
+            if (rect.intersects(itemRect) && !m_model->isGroupHeader(index)) {
+                indexes.append(index);
+            }
+        }
+    }
+    
+    return indexes;
+}
+
+bool FileListView::isGroupHeader(const QModelIndex& index) const {
+    return m_model && m_model->isGroupHeader(index);
+}
+
+void FileListView::handleGroupHeaderClick(const QModelIndex& index) {
+    if (!m_model || !m_selectionManager) {
+        return;
+    }
+    
+    QString groupName = m_model->getGroupName(index);
+    if (!groupName.isEmpty()) {
+        // Select all files in this group
+        m_selectionManager->selectGroup(groupName);
+    }
 } 

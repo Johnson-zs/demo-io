@@ -46,11 +46,13 @@ set(MODEL_HEADERS
 set(VIEW_SOURCES
     src/views/filelistview.cpp
     src/views/fileitemdelegate.cpp
+    src/views/selectionmanager.cpp
 )
 
 set(VIEW_HEADERS
     src/views/filelistview.h
     src/views/fileitemdelegate.h
+    src/views/selectionmanager.h
 )
 
 # Controller source files

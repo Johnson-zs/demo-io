@@ -59,13 +59,19 @@ bool FileItemDelegate::editorEvent(QEvent* event, QAbstractItemModel* model, con
         if (mouseEvent->button() == Qt::LeftButton) {
             bool isGroupHeader = index.data(FileSystemModel::IsGroupHeaderRole).toBool();
             
-            if (isGroupHeader && isPointInExpandCollapseButton(mouseEvent->pos(), option)) {
-                // Toggle group expansion
-                FileSystemModel* fsModel = qobject_cast<FileSystemModel*>(model);
-                if (fsModel) {
-                    QString groupName = index.data(FileSystemModel::GroupNameRole).toString();
-                    fsModel->toggleGroupExpansion(groupName);
-                    return true;
+            if (isGroupHeader) {
+                if (isPointInExpandCollapseButton(mouseEvent->pos(), option)) {
+                    // Toggle group expansion
+                    FileSystemModel* fsModel = qobject_cast<FileSystemModel*>(model);
+                    if (fsModel) {
+                        QString groupName = index.data(FileSystemModel::GroupNameRole).toString();
+                        fsModel->toggleGroupExpansion(groupName);
+                        return true;
+                    }
+                } else {
+                    // Click on group header text - this will be handled by FileListView
+                    // for group selection functionality
+                    return false; // Let the view handle it
                 }
             }
         }
