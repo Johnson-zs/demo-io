@@ -6,6 +6,7 @@
 #include <QBrush>
 #include <QFontMetrics>
 #include <QMouseEvent>
+#include <QListView>
 
 FileViewDelegate::FileViewDelegate(QObject *parent)
     : QStyledItemDelegate(parent)
@@ -30,17 +31,31 @@ QSize FileViewDelegate::sizeHint(const QStyleOptionViewItem &option, const QMode
 {
     if (!index.isValid())
         return QSize();
-        
+
     ItemType type = static_cast<ItemType>(index.data(Qt::UserRole).toInt());
-    
+
     if (type == ItemType::GroupHeader) {
-        // Group headers should span the full width - use a very large width to force full row
-        return QSize(8888, GroupHeaderHeight);
+        // Use the most reliable method to get the actual view width
+        int width = m_viewWidth; // Default fallback
+
+        // Try to get width from the widget (most reliable)
+        if (option.widget) {
+            const QListView *listView = qobject_cast<const QListView*>(option.widget);
+            if (listView) {
+                width = listView->viewport()->width();
+            } else {
+                width = option.widget->width();
+            }
+        }
+
+        // Ensure minimum width for group headers
+        width = qMax(width, 200);
+
+        return QSize(width, GroupHeaderHeight);
     } else {
         return QSize(FileItemSize, FileItemSize + 20); // Extra space for text
     }
 }
-
 bool FileViewDelegate::editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem &option, const QModelIndex &index)
 {
     if (event->type() == QEvent::MouseButtonPress) {

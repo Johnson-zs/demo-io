@@ -34,6 +34,9 @@ private:
     static const int FileItemSize = 80;
     static const int FileItemSpacing = 10;
     static const int IconSize = 48;
+
+    int m_viewWidth = 800; // Default width, will be updated by ListView
+
 };
 
 #endif // FILEVIEWDELEGATE_H 
