@@ -1,5 +1,6 @@
 #include "filelistview.h"
 #include "fileitemdelegate.h"
+#include "fileicondelegate.h"
 #include "selectionmanager.h"
 #include "../models/filesystemmodel.h"
 #include "../controllers/contextmenucontroller.h"
@@ -75,6 +76,9 @@ FileListView::FileListView(QWidget* parent)
     , m_selectionManager(nullptr)
     , m_currentSortOrder(Qt::AscendingOrder)
     , m_currentSortColumn(0)
+    , m_viewMode(ViewMode::ListView)
+    , m_listDelegate(nullptr)
+    , m_iconDelegate(nullptr)
     , m_rubberBand(nullptr)
     , m_rubberBandActive(false)
 {
@@ -102,10 +106,13 @@ void FileListView::setupView() {
     m_listView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_listView->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     
-    // Set custom delegate and connect it to header view
-    FileItemDelegate* delegate = new FileItemDelegate(this);
-    delegate->setHeaderView(m_headerView);
-    m_listView->setItemDelegate(delegate);
+    // Create both delegates
+    m_listDelegate = new FileItemDelegate(this);
+    m_listDelegate->setHeaderView(m_headerView);
+    m_iconDelegate = new FileIconDelegate(this);
+    
+    // Set initial delegate (list mode)
+    m_listView->setItemDelegate(m_listDelegate);
     
     // Create selection manager
     m_selectionManager = new SelectionManager(this);
@@ -466,4 +473,66 @@ void FileListView::handleGroupHeaderClick(const QModelIndex& index) {
         // Select all files in this group
         m_selectionManager->selectGroup(groupName);
     }
+}
+
+void FileListView::setViewMode(ViewMode mode) {
+    if (m_viewMode == mode) {
+        return;
+    }
+    
+    m_viewMode = mode;
+    
+    if (mode == ViewMode::ListView) {
+        switchToListMode();
+    } else {
+        switchToIconMode();
+    }
+    
+    emit viewModeChanged(mode);
+}
+
+void FileListView::switchToListMode() {
+    if (!m_listView || !m_listDelegate) {
+        return;
+    }
+    
+    // Show header view
+    if (m_headerView) {
+        m_headerView->show();
+    }
+    
+    // Configure list view for list mode
+    m_listView->setViewMode(QListView::ListMode);
+    m_listView->setFlow(QListView::TopToBottom);
+    m_listView->setWrapping(false);
+    m_listView->setResizeMode(QListView::Fixed);
+    m_listView->setMovement(QListView::Static);
+    m_listView->setUniformItemSizes(false);
+    m_listView->setSpacing(0);
+    
+    // Set list delegate
+    m_listView->setItemDelegate(m_listDelegate);
+}
+
+void FileListView::switchToIconMode() {
+    if (!m_listView || !m_iconDelegate) {
+        return;
+    }
+    
+    // Hide header view in icon mode
+    if (m_headerView) {
+        m_headerView->hide();
+    }
+    
+    // Configure list view for icon mode
+    m_listView->setViewMode(QListView::IconMode);
+    m_listView->setFlow(QListView::LeftToRight);
+    m_listView->setWrapping(true);
+    m_listView->setResizeMode(QListView::Adjust);
+    m_listView->setMovement(QListView::Static);
+    m_listView->setUniformItemSizes(false);
+    m_listView->setSpacing(5);
+    
+    // Set icon delegate
+    m_listView->setItemDelegate(m_iconDelegate);
 } 

@@ -17,6 +17,7 @@
 class FileSystemModel;
 class FileListView;
 class ContextMenuController;
+enum class ViewMode;
 
 /**
  * @brief Main window of the file browser application
@@ -66,6 +67,8 @@ private:
     QAction* m_refreshAction;
     QAction* m_homeAction;
     QAction* m_upAction;
+    QAction* m_listViewAction;
+    QAction* m_iconViewAction;
     
     // Status bar components
     QLabel* m_pathLabel;

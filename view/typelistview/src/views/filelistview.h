@@ -15,6 +15,16 @@
 class FileSystemModel;
 class ContextMenuController;
 class SelectionManager;
+class FileItemDelegate;
+class FileIconDelegate;
+
+/**
+ * @brief View mode enumeration for FileListView
+ */
+enum class ViewMode {
+    ListView,
+    IconView
+};
 
 /**
  * @brief Custom header view for the file list
@@ -41,7 +51,7 @@ private:
  * 
  * This view handles file display with custom delegate rendering, context menu support,
  * and advanced multi-selection capabilities including cross-group selection.
- * It includes a header view for column headers and sorting.
+ * It supports both list view and icon view modes with the same underlying QListView.
  */
 class FileListView : public QWidget
 {
@@ -53,6 +63,10 @@ public:
 
     void setModel(FileSystemModel* model);
     void setContextMenuController(ContextMenuController* controller);
+    
+    // View mode management
+    void setViewMode(ViewMode mode);
+    ViewMode viewMode() const { return m_viewMode; }
     
     // Selection methods
     QModelIndexList selectedIndexes() const;
@@ -68,6 +82,7 @@ signals:
     void directoryActivated(const QString& path);
     void sortingChanged(const QString& sortingType, bool ascending);
     void selectionChanged(const QModelIndexList& selected);
+    void viewModeChanged(ViewMode mode);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
@@ -89,6 +104,8 @@ private:
     QModelIndexList getIndexesInRect(const QRect& rect) const;
     bool isGroupHeader(const QModelIndex& index) const;
     void handleGroupHeaderClick(const QModelIndex& index);
+    void switchToListMode();
+    void switchToIconMode();
 
 private:
     QVBoxLayout* m_layout;
@@ -99,6 +116,11 @@ private:
     SelectionManager* m_selectionManager;
     Qt::SortOrder m_currentSortOrder;
     int m_currentSortColumn;
+    
+    // View mode and delegates
+    ViewMode m_viewMode;
+    FileItemDelegate* m_listDelegate;
+    FileIconDelegate* m_iconDelegate;
     
     // Multi-selection support
     QRubberBand* m_rubberBand;

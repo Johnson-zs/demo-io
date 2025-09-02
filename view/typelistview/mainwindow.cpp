@@ -186,6 +186,25 @@ void MainWindow::setupToolBar() {
     m_toolBar = addToolBar(tr("Main"));
     m_toolBar->setMovable(false);
     
+    // View mode toggle buttons
+    m_listViewAction = new QAction(this);
+    m_listViewAction->setIcon(QApplication::style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    m_listViewAction->setText(tr("List View"));
+    m_listViewAction->setToolTip(tr("Switch to list view"));
+    m_listViewAction->setCheckable(true);
+    m_listViewAction->setChecked(true);
+    m_toolBar->addAction(m_listViewAction);
+    
+    m_iconViewAction = new QAction(this);
+    m_iconViewAction->setIcon(QApplication::style()->standardIcon(QStyle::SP_FileDialogListView));
+    m_iconViewAction->setText(tr("Icon View"));
+    m_iconViewAction->setToolTip(tr("Switch to icon view"));
+    m_iconViewAction->setCheckable(true);
+    m_iconViewAction->setChecked(false);
+    m_toolBar->addAction(m_iconViewAction);
+    
+    m_toolBar->addSeparator();
+    
     // Home action
     m_homeAction = new QAction(this);
     m_homeAction->setIcon(QApplication::style()->standardIcon(QStyle::SP_DirHomeIcon));
@@ -270,6 +289,22 @@ void MainWindow::setupToolBar() {
     m_toolBar->addWidget(m_groupingCombo);
     
     // Connect toolbar actions
+    connect(m_listViewAction, &QAction::triggered, this, [this]() {
+        if (m_listView) {
+            m_listView->setViewMode(ViewMode::ListView);
+            m_listViewAction->setChecked(true);
+            m_iconViewAction->setChecked(false);
+        }
+    });
+    
+    connect(m_iconViewAction, &QAction::triggered, this, [this]() {
+        if (m_listView) {
+            m_listView->setViewMode(ViewMode::IconView);
+            m_listViewAction->setChecked(false);
+            m_iconViewAction->setChecked(true);
+        }
+    });
+    
     connect(m_homeAction, &QAction::triggered, this, [this]() {
         QString homePath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
         navigateToPath(homePath);
@@ -495,3 +530,4 @@ void MainWindow::onUpDirectoryTriggered() {
         QMessageBox::warning(this, tr("Error"), tr("Cannot go up from: %1").arg(m_currentPath));
     }
 }
+
