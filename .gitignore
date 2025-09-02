@@ -13,3 +13,5 @@ CMakeUserPresets.json
 build
 .vscode
 .cache
+.specstory
+.cursor*
